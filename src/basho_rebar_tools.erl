@@ -47,7 +47,14 @@ init(State) ->
         [] ->
             {'ok', State};
         Mods ->
-            {'ok', init_providers(Mods, State)}
+            % There's no application at this point, so don't try to get its
+            % directory - it will be 'undefined'.
+            case brt_config:init([rebar_state:dir(State)]) of
+                'ok' ->
+                    init_providers(Mods, {'ok', State});
+                {'error', What} ->
+                    erlang:error(What)
+            end
     end.
 
 -spec do(State :: brt:rebar_state()) -> {'ok', brt:rebar_state()}.
@@ -72,17 +79,19 @@ format_error(Error) ->
 %% Internal
 %%====================================================================
 
--spec init_providers(Mods :: [module()], State :: brt:rebar_state())
-        -> brt:rebar_state().
+-spec init_providers(Mods :: [module()], State :: {'ok', brt:rebar_state()})
+        -> {'ok', brt:rebar_state()}.
 %
-% Initialize the application environment and command providers.
+% Initialize the command providers.
+% Yes, this could be done with lists:foldl/3, but doing it explicitly here is
+% handy for working out the kinks that are a natural part of developing rebar
+% providers.
 %
-init_providers(Mods, State) ->
-    brt_config:init([
-        rebar_app_info:dir(rebar_state:current_app(State)),
-        rebar_state:dir(State)
-    ]),
-    lists:foldl(fun(Mod, CurState) -> Mod:init(CurState) end, State, Mods).
+init_providers([Mod | Mods], {'ok', State}) ->
+%%    ?BRT_VAR(Mod),
+    init_providers(Mods, Mod:init(State));
+init_providers([], Result) ->
+    Result.
 
 -spec provider_modules(State :: brt:rebar_state()) -> [module()].
 %

@@ -19,9 +19,9 @@
 %% -------------------------------------------------------------------
 
 %%
-%% @doc BRT provider for the 'brt-info' command.
+%% @doc BRT provider for the 'brt-dump' command.
 %%
--module(brt_prv_info).
+-module(brt_prv_dump).
 
 %% provider behavior
 -ifndef(brt_validate).
@@ -31,9 +31,9 @@
 
 -include("brt.hrl").
 
--define(PROVIDER_ATOM,  'brt-info').
--define(PROVIDER_STR,   "brt-info").
--define(PROVIDER_DEPS,  []).
+-define(PROVIDER_ATOM,  'brt-dump').
+-define(PROVIDER_STR,   "brt-dump").
+-define(PROVIDER_DEPS,  [compile]).
 -define(PROVIDER_OPTS,  []).
 
 %% ===================================================================
@@ -62,7 +62,7 @@ init(State) ->
 %% @doc Display provider information.
 %%
 do(State) ->
-    {brt_io:write_info('standard_io'), State}.
+    {dump(State), State}.
 
 -spec format_error(Error :: term()) -> iolist().
 %%
@@ -76,8 +76,75 @@ format_error(Error) ->
 %%====================================================================
 
 short_desc() ->
-    "Information about " ?APP_NAME_DISPLAY.
+    "Dumps the Rebar State, for debugging ONLY!".
 
 long_desc() ->
     short_desc().
+
+-define(STATE_FIELDS, [
+    dir,
+    opts,
+    code_paths,
+    default,
+    escript_path,
+    lock,
+    current_profiles,
+    namespace,
+    command_args,
+    command_parsed_args,
+    current_app,
+    project_apps,
+    deps_to_build,
+    all_plugin_deps,
+    all_deps,
+    resources,
+    providers,
+    allow_provider_overrides
+]).
+
+dump(State) ->
+    Fields = case rebar_state:command_args(State) of
+        [] ->
+            lists:seq(1, erlang:length(?STATE_FIELDS));
+        Args ->
+            fields(Args, [])
+    end,
+    ['state_t' | Elems] = erlang:tuple_to_list(State),
+    dump(Elems, 1, Fields).
+
+fields([Field | Fields], Result) ->
+    case list_pos(brt:to_atom(Field), ?STATE_FIELDS, 1) of
+        0 ->
+            fields(Fields, Result);
+        N ->
+            fields(Fields, [N | Result])
+    end;
+fields([], Result) ->
+    Result.
+
+dump([Elem | Elems], Pos, Fields)
+        when erlang:is_tuple(Elem) andalso erlang:element(1, Elem) =:= 'dict' ->
+    dump([dict:to_list(Elem) | Elems], Pos, Fields);
+dump([Elem | Elems], Pos, Fields) ->
+    case lists:member(Pos, Fields) of
+        'true' ->
+            io:format("~s:~n    ~p~n", [label(Pos), Elem]);
+        _ ->
+            'ok'
+    end,
+    dump(Elems, (Pos + 1), Fields);
+dump([], _, _) ->
+    'ok'.
+
+label(Pos) when Pos =< erlang:length(?STATE_FIELDS) ->
+    lists:nth(Pos, ?STATE_FIELDS);
+label(Pos) ->
+    erlang:integer_to_list(Pos).
+
+list_pos(Elem, [Elem | _], Pos) ->
+    Pos;
+list_pos(Elem, [_ | Elems], Pos) ->
+    list_pos(Elem, Elems, (Pos + 1));
+list_pos(_, [], _) ->
+    0.
 

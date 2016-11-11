@@ -23,6 +23,9 @@
 % API
 -export([
     copyright_info/2,
+    inc_indent/1,
+    inc_indent/2,
+    indent/1,
     write_deps/3,
     write_info/1,
     write_makefile/3,
@@ -39,6 +42,8 @@
 %   Manipulating indents outside of the explicit indent functions is
 %   deliberately not supported.
 %
+%   Atoms are always printed with surrounding single quotes, because it's
+%   too much trouble to figure out whether they need them or not.
 
 % Maximum number of lines to process looking for a copyright header.
 -define(MAX_CPY_LINES,  50).
@@ -238,19 +243,6 @@ close_term(IoDev, _Indent, []) ->
 close_term(IoDev, _Indent, _Remain) ->
     io:put_chars(IoDev, ",\n").
 
-%%-spec dec_indent(Indent :: iolist()) -> iolist().
-%%dec_indent(Indent) ->
-%%    dec_indent(1, Indent).
-%%
-%%-spec dec_indent(Levels :: non_neg_integer(), Indent :: iolist()) -> iolist().
-%%dec_indent(_, []) ->
-%%    [];
-%%dec_indent(0, Indent) ->
-%%    Indent;
-%%dec_indent(Levels, [_ | Indent])
-%%        when erlang:is_integer(Levels) andalso Levels > 0 ->
-%%    dec_indent((Levels - 1), Indent).
-
 -spec inc_indent(Indent :: iolist()) -> iolist().
 inc_indent(Indent) ->
     inc_indent(1, Indent).
@@ -425,21 +417,21 @@ write_rebar_config_terms(IoDev, Indent, [{Section, []} | Terms])
 % Terms whose value can only be a single flat string.
 write_rebar_config_terms(IoDev, Indent, [{Section, String} | Terms])
         when ?is_string_sect(Section) ->
-    io:format(IoDev, "~s{~s, \"~s\"", [Indent, Section, String]),
+    io:format(IoDev, "~s{'~s', \"~s\"", [Indent, Section, String]),
     close_tuple_term(IoDev, Indent, Terms),
     write_rebar_config_terms(IoDev, Indent, Terms);
 
 % Anything not specifically matched above is included even if the value is an
 % empty list.
 write_rebar_config_terms(IoDev, Indent, [{Section, []} | Terms]) ->
-    io:format(IoDev, "~s{~s, [\n", [Indent, Section]),
+    io:format(IoDev, "~s{'~s', [\n", [Indent, Section]),
     close_list_term(IoDev, Indent, Terms),
     write_rebar_config_terms(IoDev, Indent, Terms);
 
 % Terms formatted as dependencies.
 write_rebar_config_terms(IoDev, Indent, [{Section, Deps} | Terms])
         when ?is_deps_sect(Section) ->
-    io:format(IoDev, "~s{~s, [\n", [Indent, Section]),
+    io:format(IoDev, "~s{'~s', [\n", [Indent, Section]),
     write_deps(IoDev, inc_indent(Indent), Deps),
     close_list_term(IoDev, Indent, Terms),
     write_rebar_config_terms(IoDev, Indent, Terms);
@@ -447,7 +439,7 @@ write_rebar_config_terms(IoDev, Indent, [{Section, Deps} | Terms])
 % Terms whose value can only be a list of flat strings.
 write_rebar_config_terms(IoDev, Indent, [{Section, Strings} | Terms])
         when ?is_string_list_sect(Section) ->
-    io:format(IoDev, "~s{~s, [\n", [Indent, Section]),
+    io:format(IoDev, "~s{'~s', [\n", [Indent, Section]),
     write_strings(IoDev, inc_indent(Indent), Strings),
     close_list_term(IoDev, Indent, Terms),
     write_rebar_config_terms(IoDev, Indent, Terms);
@@ -460,7 +452,7 @@ write_rebar_config_terms(IoDev, Indent, [{Section, Overrides} | Terms])
 
 write_rebar_config_terms(IoDev, Indent, [{Section, Profiles} | Terms])
         when Section =:= 'profiles' ->
-    io:format(IoDev, "~s{~s, [\n", [Indent, Section]),
+    io:format(IoDev, "~s{'~s', [\n", [Indent, Section]),
     write_profiles(IoDev, inc_indent(Indent), Profiles),
     close_list_term(IoDev, Indent, Terms),
     write_rebar_config_terms(IoDev, Indent, Terms);
@@ -580,7 +572,7 @@ write_dep(_IoDev, _SubIndent, Dep) ->
         IoDev :: io:device(), Indent :: iolist(), Overrides :: [tuple()])
         -> 'ok'.
 write_overrides(IoDev, Indent, Overrides) ->
-    io:put_chars(IoDev, [Indent, "{overrides, [\n"]),
+    io:put_chars(IoDev, [Indent, "{'overrides', [\n"]),
     write_overrides(IoDev, Indent, inc_indent(Indent), Overrides),
     io:put_chars(IoDev, [Indent, "]}"]).
 
@@ -602,15 +594,15 @@ write_overrides(_IoDev, _Indent, _SubIndent, []) ->
         -> 'ok'.
 % Special case because this is a common override.
 write_override(IoDev, Indent, {Mode, Pkg, [{'erl_opts', List}]}) ->
-    io:format(IoDev, "~s{~s, ~s, [{erl_opts, [", [Indent, Mode, Pkg]),
+    io:format(IoDev, "~s{'~s', '~s', [{'erl_opts', [", [Indent, Mode, Pkg]),
     write_values(IoDev, Indent, List),
     io:put_chars(IoDev, "]}]}");
 write_override(IoDev, Indent, {Mode, Pkg, List}) ->
-    io:format(IoDev, "~s{~s, ~s, ", [Indent, Mode, Pkg]),
+    io:format(IoDev, "~s{'~s', '~s', ", [Indent, Mode, Pkg]),
     write_values(IoDev, Indent, List),
     io:put_chars(IoDev, "]}");
 write_override(IoDev, Indent, {Mode, List}) ->
-    io:format(IoDev, "~s{~s, ", [Indent, Mode]),
+    io:format(IoDev, "~s{'~s', ", [Indent, Mode]),
     write_values(IoDev, Indent, List),
     io:put_chars(IoDev, "]}");
 write_override(IoDev, Indent, Override) ->
@@ -623,7 +615,7 @@ write_override(IoDev, Indent, Override) ->
         Profiles :: [{brt:rebar_key(), brt:rebar_conf()}])
         -> 'ok'.
 write_profiles(IoDev, Indent, [{Name, Terms} | Profiles]) ->
-    io:format(IoDev, "~s{~s, [\n", [Indent, Name]),
+    io:format(IoDev, "~s{'~s', [\n", [Indent, Name]),
     write_rebar_config_terms(IoDev, inc_indent(Indent), Terms),
     close_list_term(IoDev, Indent, Profiles),
     write_profiles(IoDev, Indent, Profiles);
@@ -701,7 +693,9 @@ write_value(IoDev, Indent, Value) when erlang:is_tuple(Value) ->
     write_values(IoDev, Indent, erlang:tuple_to_list(Value)),
     io:put_chars(IoDev, [$}]);
 
+write_value(IoDev, _Indent, Value) when erlang:is_atom(Value) ->
+    io:format(IoDev, "'~s'", [Value]);
+
 write_value(IoDev, _Indent, Value) ->
     io:format(IoDev, "~w", [Value]).
-
 

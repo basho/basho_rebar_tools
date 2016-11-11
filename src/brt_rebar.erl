@@ -48,7 +48,7 @@ create_rebar_config(AppName, AppDir, DepsDir, CfgFile, Overwrite) ->
     case brt_xref:app_deps(AppName, AppDir, DepsDir) of
         {'error', _} = XRefErr ->
             XRefErr;
-        {ProdApps, TestApps} ->
+        {'ok', ProdApps, TestApps} ->
             Config  = brt_defaults:rebar_config(ProdApps, TestApps, []),
             OpenOpts = case Overwrite of
                 'true' ->
@@ -84,7 +84,7 @@ update_rebar_config(AppName, AppDir, DepsDir, CfgFile, MustExist) ->
     case brt_xref:app_deps(AppName, AppDir, DepsDir) of
         {'error', _} = XRefErr ->
             XRefErr;
-        {ProdApps, TestApps} ->
+        {'ok', ProdApps, TestApps} ->
             Config  = brt_defaults:rebar_config(ProdApps, TestApps, []),
             YearOrError = case brt_io:copyright_info(CfgFile, 'erl') of
                 {'basho', CpyYear} ->
@@ -99,8 +99,7 @@ update_rebar_config(AppName, AppDir, DepsDir, CfgFile, MustExist) ->
                 'none' ->
                     brt_repo:added_year(CfgFile, 'current');
                 'other' ->
-                    {'error', lists:flatten([CfgFile, ": "
-                        "Multiple or non-Basho copyrights, adjust manually"])};
+                    {'error', {'brt', {'copyright_dirty', CfgFile}}};
                 {'error', _} = FileErr ->
                     FileErr
             end,

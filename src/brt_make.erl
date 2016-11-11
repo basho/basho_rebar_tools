@@ -48,7 +48,7 @@ create_makefile(AppName, AppDir, DepsDir, Makefile, Overwrite) ->
     case brt_xref:app_deps(AppName, AppDir, DepsDir) of
         {'error', _} = XRefErr ->
             XRefErr;
-        {ProdApps, TestApps} ->
+        {'ok', ProdApps, TestApps} ->
             Content = brt_defaults:makefile(ProdApps, TestApps),
             OpenOpts = case Overwrite of
                 'true' ->
@@ -84,7 +84,7 @@ update_makefile(AppName, AppDir, DepsDir, Makefile, MustExist) ->
     case brt_xref:app_deps(AppName, AppDir, DepsDir) of
         {'error', _} = XRefErr ->
             XRefErr;
-        {ProdApps, TestApps} ->
+        {'ok', ProdApps, TestApps} ->
             Content = brt_defaults:makefile(ProdApps, TestApps),
             YearOrError = case brt_io:copyright_info(Makefile, 'sh') of
                 {'basho', CpyYear} ->
@@ -99,8 +99,7 @@ update_makefile(AppName, AppDir, DepsDir, Makefile, MustExist) ->
                 'none' ->
                     brt_repo:added_year(Makefile, 'current');
                 'other' ->
-                    {'error', lists:flatten([Makefile, ": "
-                        "Multiple or non-Basho copyrights, adjust manually"])};
+                    {'error', {'brt', {'copyright_dirty', Makefile}}};
                 {'error', _} = FileErr ->
                     FileErr
             end,

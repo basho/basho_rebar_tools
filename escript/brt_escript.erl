@@ -82,8 +82,7 @@ main(Args) ->
 -spec run(Args :: [string()]) -> term() | no_return().
 
 run(["deps", AppDir]) ->
-    {ProdApps, TestApps} = brt_xref:app_deps(
-        brt:app_dir_to_name(AppDir), AppDir, filename:dirname(AppDir)),
+    {ProdApps, TestApps} = xref_app_deps(AppDir),
     io:put_chars("Prod:\n"),
     brt_io:write_deps('standard_io', 1, lists:sort(ProdApps)),
     io:put_chars("Test:\n"),
@@ -102,8 +101,7 @@ run(["mk", "help"]) ->
     );
 
 run(["mk", AppDir]) ->
-    {ProdApps, TestApps} = brt_xref:app_deps(
-        brt:app_dir_to_name(AppDir), AppDir, filename:dirname(AppDir)),
+    {ProdApps, TestApps} = xref_app_deps(AppDir),
     Make = brt_defaults:makefile(ProdApps, TestApps),
     io:put_chars(Make);
 
@@ -125,8 +123,7 @@ run(["rc", "help"]) ->
     );
 
 run(["rc", AppDir]) ->
-    {ProdApps, TestApps} = brt_xref:app_deps(
-        brt:app_dir_to_name(AppDir), AppDir, filename:dirname(AppDir)),
+    {ProdApps, TestApps} = xref_app_deps(AppDir),
     Conf = brt_defaults:rebar_config(ProdApps, TestApps, []),
     brt_io:write_rebar_config('standard_io', Conf, 'current');
 
@@ -246,8 +243,17 @@ error_exit(Class, What, Stack) ->
     io:format('standard_error', Fmt, [Class, What, Stack]),
     erlang:halt(1).
 
--ifdef(BRT_ESCRIPT_REDIRECT).
--endif. % BRT_ESCRIPT_REDIRECT
+-spec xref_app_deps(AppDir :: brt:fs_path())
+        -> {'ok', [brt:app_name()], [brt:app_name()]} | no_return().
+xref_app_deps(AppDir) ->
+    AppName = brt:app_dir_to_name(AppDir),
+    DepsDir = filename:dirname(AppDir),
+    case brt_xref:app_deps(AppName, AppDir, DepsDir) of
+        {'ok', ProdApps, TestApps} ->
+            {ProdApps, TestApps};
+        {'error', What} ->
+            erlang:error(What)
+    end.
 
 -spec setup_app_env() -> 'ok' | brt:err_result() | no_return().
 %

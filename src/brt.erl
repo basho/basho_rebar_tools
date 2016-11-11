@@ -33,6 +33,7 @@
     dep_list/1,
     dep_list_member/2,
     dep_name/1,
+    format_error/1,
     get_key_list/2,
     get_key_tuple/2,
     get_key_value/2,
@@ -58,6 +59,7 @@
     file_mode/0,
     fs_path/0,
     prv_error/0,
+    rebar_app/0,
     rebar_conf/0,
     rebar_key/0,
     rebar_prov/0,
@@ -72,11 +74,13 @@
 -include("brt.hrl").
 
 -ifdef(brt_check).
--type rebar_state() ::  rebar_state:t().
+-type rebar_app()   ::  rebar_app_info:t().
 -type rebar_prov()  ::  providers:t().
+-type rebar_state() ::  rebar_state:t().
 -else.
--type rebar_state() ::  tuple().
+-type rebar_app()   ::  tuple().
 -type rebar_prov()  ::  tuple().
+-type rebar_state() ::  tuple().
 -endif.
 
 -type app_name()    ::  atom().
@@ -198,6 +202,21 @@ dep_name(Arg) ->
 %%
 file_error(File, What) ->
     {'error', lists:flatten([File, ": ", file:format_error(What)])}.
+
+-spec format_error(Error :: term()) -> iolist().
+%%
+%% @doc Map errors to consistent messages.
+%%
+format_error(Error) when erlang:is_list(Error) ->
+    Error;
+format_error('app_undefined') ->
+    "No top-level application defined.";
+format_error({'copyright_dirty', File}) ->
+    [File, ": Multiple or non-Basho copyrights, adjust manually"];
+format_error('deps_mismatch') ->
+    "Static and calculated dependencies differ.";
+format_error(Error) ->
+    io_lib:format("~p", [Error]).
 
 -spec get_key_list(Key :: term(), Terms :: list()) -> list() | no_return().
 %%

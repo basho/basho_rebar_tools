@@ -391,7 +391,7 @@ merge_terms([{Key, AddElems} = Term | Terms], Result, Nested)
     NextResult = case lists:member(Key, Nested) of
         'true' ->
             case lists:keytake(Key, 1, Result) of
-                {'value', PrevElems, NewResult} ->
+                {'value', {_, PrevElems}, NewResult} ->
                     [{Key, merge_list(AddElems, PrevElems)} | NewResult];
                 'false' ->
                     [Term | Result]

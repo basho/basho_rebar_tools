@@ -30,7 +30,7 @@ compile :: prereqs
 	$(REBAR3) as prod compile
 
 check :: prereqs
-	$(REBAR3) as check do dialyzer, xref
+	$(REBAR3) as check do brt-deps --check, dialyzer, xref
 
 clean :: prereqs
 	$(REBAR3) clean --all
