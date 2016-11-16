@@ -99,7 +99,7 @@ update_makefile(AppName, AppDir, DepsDir, Makefile, MustExist) ->
                 'none' ->
                     brt_repo:added_year(Makefile, 'current');
                 'other' ->
-                    {'error', {'brt', {'copyright_dirty', Makefile}}};
+                    {'error', {'brt', 'copyright_dirty'}};
                 {'error', _} = FileErr ->
                     FileErr
             end,
