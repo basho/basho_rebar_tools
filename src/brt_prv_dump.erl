@@ -33,8 +33,16 @@
 
 -define(PROVIDER_ATOM,  'brt-dump').
 -define(PROVIDER_STR,   "brt-dump").
--define(PROVIDER_DEPS,  [compile]).
+%-define(PROVIDER_DEPS,  ['compile']).
+-define(PROVIDER_DEPS,  [lock]).
 -define(PROVIDER_OPTS,  []).
+
+% Dialyzer doesn't want us peeking inside opaque types, but we want to give
+% dicts special handling.
+% In older Erlangs the compiler will complain if it encounters attribute
+% declarations once functions have been defined, so this needs to stay up here
+% for now.
+-dialyzer({no_opaque, dump/3}).
 
 %% ===================================================================
 %% Behavior
@@ -48,9 +56,9 @@ init(State) ->
     Provider = providers:create([
         {'name',        ?PROVIDER_ATOM},
         {'module',      ?MODULE},
-        {'bare',        'true'},
+        {'bare',        'false'},
         {'deps',        ?PROVIDER_DEPS},
-        {'example',     "rebar3 " ?PROVIDER_STR},
+        {'example',     "rebar3 " ?PROVIDER_STR "[<field> ...]"},
         {'short_desc',  short_desc()},
         {'desc',        long_desc()},
         {'opts',        ?PROVIDER_OPTS}
@@ -72,15 +80,27 @@ format_error(Error) ->
     brt:format_error(Error).
 
 %%====================================================================
+%% Help Text
+%%====================================================================
+
+-spec short_desc() -> string().
+short_desc() ->
+    "Dumps assorted state, for debugging ONLY!".
+
+-spec long_desc() -> string().
+long_desc() ->
+    short_desc() ++ "\n"
+    "\n"
+    "If you want to dump the entire rebar state, try the 'state' command for "
+    "prettier formatting.\n"
+    "This command allows dumping just a portion of the state, as specified by "
+    "a list of record field names on the command line.\n".
+
+%%====================================================================
 %% Internal
 %%====================================================================
 
-short_desc() ->
-    "Dumps the Rebar State, for debugging ONLY!".
-
-long_desc() ->
-    short_desc().
-
+% Oh so tightly coupled to the rebar state record :(
 -define(STATE_FIELDS, [
     dir,
     opts,
@@ -122,9 +142,18 @@ fields([Field | Fields], Result) ->
 fields([], Result) ->
     Result.
 
+-spec dump(
+        Elems   :: [term()],
+        Pos     :: non_neg_integer(),
+        Fields  :: [non_neg_integer()])
+        -> 'ok'.
+
 dump([Elem | Elems], Pos, Fields)
-        when erlang:is_tuple(Elem) andalso erlang:element(1, Elem) =:= 'dict' ->
+        when erlang:is_tuple(Elem)
+        andalso erlang:tuple_size(Elem) > 1
+        andalso erlang:element(1, Elem) =:= 'dict' ->
     dump([dict:to_list(Elem) | Elems], Pos, Fields);
+
 dump([Elem | Elems], Pos, Fields) ->
     case lists:member(Pos, Fields) of
         'true' ->
@@ -133,6 +162,7 @@ dump([Elem | Elems], Pos, Fields) ->
             'ok'
     end,
     dump(Elems, (Pos + 1), Fields);
+
 dump([], _, _) ->
     'ok'.
 

@@ -22,220 +22,196 @@
 
 % API
 -export([
-    app_deps/1,
-    app_deps/3,
-    dep_apps/3
+    add/2,
+    app/2,
+    app_deps/2,
+    dep_apps/2,
+    new/1,
+    stop/1
 ]).
 
--type dep_spec()    ::  {brt:app_name(),  brt:fs_path()}.
--type xref_error()  ::  {'error', module(), term()}.
+-export_type([
+    addable/0,
+    app_dir/0,
+    lib_dir/0,
+    xref/0
+]).
 
--define(XREF,   ?MODULE).
+-include("brt.hrl").
+
+%
+% For the time being, maintain the list of added applications and their
+% directories outside the xref server for easy access.
+% This approach may change if we want to use this module for more extensive
+% analysis, which is why it's wrapped in a record in the first place.
+%
+-record(brt_xref, {
+    xref        ::  pid() | atom(),
+    apps  = []  ::  [brt:app_spec()]
+}).
+
+-type addable() ::  brt:app_spec() | app_dir() | lib_dir().
+-type app_dir() ::  brt:fs_path().
+-type lib_dir() ::  {brt:fs_path()}.
+-type xref()    ::  #brt_xref{}.
+
+-type xref_error()  ::  {'error', module(), term()}.
 
 %% ===================================================================
 %% API
 %% ===================================================================
 
--spec app_deps(State :: brt:rebar_state())
-        -> {'ok', [brt:app_name()], [brt:app_name()]} | brt:err_result().
+-spec add(XRef :: xref(), Adds :: addable() | [addable()])
+        -> {'ok', xref()} | brt:err_result().
 %%
-%% @doc Returns the production and test dependencies of an application.
+%% @doc Adds the specified applications to the xref server.
 %%
-app_deps(State) ->
-    case rebar_state:project_apps(State) of
-        [] ->
-            % this really should never happen, but avoid a bad match
-            {'error', {?MODULE, 'app_undefined'}};
-        [AppInfo | Tail] ->
-            AppName = brt:to_atom(rebar_app_info:name(AppInfo)),
-            case Tail of
-                [] ->
-                    'ok';
+%% Applications are identified by their names, and duplicates are silently
+%% ignored, as are directories that do not appear to contain an application.
+%%
+%% Input list elements are each one of:
+%%
+%%   {AppName, AppDir}  = The name and output path of an application.
+%%   {LibDir}           = A directory containing application directories.
+%%   AppDir             = An application directory.
+%%
+add(#brt_xref{xref = X, apps = Apps} = XRef, [{Name, _, Path} = App | Adds]) ->
+    case not lists:keymember(Name, 1, Apps) andalso brt:is_app_dir(Path) of
+        'true' ->
+            case xref:add_application(X, Path, [{'name', Name}]) of
+                {'ok', _} ->
+                    add(XRef#brt_xref{apps = [App | Apps]}, Adds);
+                XRefErr ->
+                    xref_error(XRefErr)
+            end;
+        _ ->
+            add(XRef, Adds)
+    end;
+add(XRef, [{LibDir} | Adds]) ->
+    case file:list_dir_all(LibDir) of
+        {'ok', Subs} ->
+            Paths = [filename:join(LibDir, Sub) || Sub <- Subs],
+            add(XRef, Paths ++ Adds);
+        {'error', What} ->
+            brt:file_error(LibDir, What)
+    end;
+add(#brt_xref{xref = X, apps = Apps} = XRef, [Path | Adds]) ->
+    case brt:is_app_dir(Path) of
+        'true' ->
+            Name = brt:app_dir_to_name(Path),
+            case lists:keymember(Name, 1, Apps) of
+                'false' ->
+                    case xref:add_application(X, Path, [{'name', Name}]) of
+                        {'ok', _} ->
+                            App = {Name, Path, Path},
+                            add(XRef#brt_xref{apps = [App | Apps]}, Adds);
+                        XRefErr ->
+                            xref_error(XRefErr)
+                    end;
                 _ ->
-                    rebar_api:warn(
-                        "Multiple applications defined, analyzing ~s",
-                        [AppName])
-            end,
-            AppDir  = rebar_app_info:out_dir(AppInfo),
-            DepsDir = filename:dirname(AppDir),
-            DepsAlt = filename:join(rebar_state:dir(State), "_checkouts"),
-            DepDirs = case filelib:is_dir(DepsAlt) of
-                'true' ->
-                    [DepsAlt, DepsDir];
-                _ ->
-                    [DepsDir]
-            end,
-            app_deps(AppName, AppDir, DepDirs)
-    end.
+                    add(XRef, Adds)
+            end;
+        _ ->
+            add(XRef, Adds)
+    end;
+add(XRef, []) ->
+    {'ok', XRef};
+add(XRef, Addable) ->
+    add(XRef, [Addable]).
 
--spec app_deps(
-        AppName     :: brt:app_name(),
-        AppDir      :: brt:fs_path(),
-        DepsDirs    :: [brt:fs_path()])
-        -> {'ok', [brt:app_name()], [brt:app_name()]} | brt:err_result().
+-spec app(XRef :: xref(), AppName :: brt:app_name())
+        -> brt:app_spec() | 'false'.
 %%
-%% @doc Returns the production and test dependencies of an application.
+%% @doc Returns the name/path tuple for the specified application, if found.
 %%
-%% On success, the result is {'ok', ProdApps, TestApps}, each as a list of
-%% application name atoms.
+%% Returns 'false' if the application has not been added to the xref server.
 %%
-app_deps(AppName, AppDir, DepsDirs) ->
-    case analyze_app_to_app(AppName, AppDir, DepsDirs, 'application_call') of
-        {'error', _} = ProdErr ->
-            ProdErr;
-        {'ok', XRefApps} ->
-            ProdApps = case brt:get_key_list('force', brt_config:config()) of
-                [] ->
-                    XRefApps;
-                ForcedApps ->
-                    lists:usort(ForcedApps ++ XRefApps)
-            end,
-            %
-            % It would be better to use xref on test modules, which would pick
-            % up meck and the like (but might also pick up false positives on
-            % quickcheck), but for now just look for the pattern we use for
-            % cuttlefish schema files and assume we actually test them.
-            %
-            % Best results will be obtained by compiling with the 'prod' and
-            % 'test' profiles, running xref on both, and diff'ing the results
-            % to come up the apps that are used only in test mode.
-            % That, in turn, will require Makefile support and/or some tricky
-            % plugin magic to invoke multiple rebar compilations.
-            % Doable, in time.
-            %
-            TestApps = case lists:member('cuttlefish', [AppName | ProdApps]) of
-                'true' ->
-                    [];
-                _ ->
-                    Schema = filename:join(
-                        [AppDir, "priv", brt:to_string(AppName) ++ ".schema"]),
-                    case filelib:is_regular(Schema) of
-                        'true' ->
-                            ['cuttlefish'];
-                        _ ->
-                            []
-                    end
-            end,
-            {'ok', ProdApps, TestApps}
-    end.
+app(#brt_xref{apps = Apps}, AppName) ->
+    lists:keyfind(brt:to_atom(AppName), 1, Apps).
 
--spec dep_apps(
-        AppName     :: brt:app_name(),
-        AppDir      :: brt:fs_path(),
-        DepsDirs    :: [brt:fs_path()])
+-spec app_deps(XRef :: xref(), Apps :: brt:app_name() | [brt:app_name()])
         -> {'ok', [brt:app_name()]} | brt:err_result().
 %%
-%% @doc Returns the applications that depend on an application.
+%% @doc Returns all of the applications called by any of the input Apps.
 %%
-dep_apps(AppName, AppDir, DepsDirs) ->
-    analyze_app_to_app(AppName, AppDir, DepsDirs, 'application_use').
+%% Note that the result is not filtered, so it normally includes the input Apps.
+%%
+app_deps(#brt_xref{xref = X}, Apps) when erlang:is_list(Apps) ->
+    case xref:analyze(X, {'application_call', Apps}) of
+        {'ok', _} = Ret ->
+            Ret;
+        XRefErr ->
+            xref_error(XRefErr)
+    end;
+app_deps(XRef, App) ->
+    app_deps(XRef, [App]).
+
+-spec dep_apps(XRef :: xref(), Apps :: brt:app_name() | [brt:app_name()])
+        -> {'ok', [brt:app_name()]} | brt:err_result().
+%%
+%% @doc Returns all of the applications that call any of the input Apps.
+%%
+%% Note that the result is not filtered, so it normally includes the input Apps.
+%%
+dep_apps(#brt_xref{xref = X}, Apps) when erlang:is_list(Apps) ->
+    case xref:analyze(X, {'application_use', Apps}) of
+        {'ok', _} = Ret ->
+            Ret;
+        XRefErr ->
+            xref_error(XRefErr)
+    end;
+dep_apps(XRef, App) ->
+    dep_apps(XRef, [App]).
+
+-spec new(StateOrApps :: brt:rebar_state() | addable() | [addable()])
+        -> {'ok', xref()} | brt:err_result().
+%%
+%% @doc Starts an XRef server and loads it from the provided input.
+%%
+%% When the input is a list, it is handled according to the rules for input to
+%% the add/2 function.
+%%
+%% An empty server can be started by providing an empty input list.
+%%
+new(State) when ?is_rebar_state(State) ->
+    case brt_rebar:apps_deps_dirs(State) of
+        {'ok', AppSpecs, DepsDirs} ->
+            new(lists:append([
+                AppSpecs, brt_rebar:dep_app_specs(State), [{D} || D <- DepsDirs]
+            ]));
+        Error ->
+            Error
+    end;
+new([]) ->
+    case xref:start([{'xref_mode', 'modules'}]) of
+        {'ok', Pid} ->
+            {'ok', #brt_xref{xref = Pid}};
+        _ ->
+            {'error', {'brt', 'xref_start_failed'}}
+    end;
+new(Dirs) ->
+    case new([]) of
+        {'ok', XRef} ->
+            add(XRef, Dirs);
+        Error ->
+            Error
+    end.
+
+-spec stop(XRef :: xref()) -> 'ok'.
+%%
+%% @doc Shuts down the xref server.
+%%
+%% In this short-running context there's little need for this, as multiple
+%% analyses can be done on a single instance.
+%%
+stop(#brt_xref{xref = X}) ->
+    catch xref:stop(X),
+    'ok'.
 
 %% ===================================================================
 %% Internal
 %% ===================================================================
 
--spec analyze_app_to_app(
-        AppName :: brt:app_name(),
-        AppDir  :: brt:fs_path(), DepsDir :: brt:fs_path(),
-        Analysis :: 'application_call' | 'application_use')
-        -> {'ok', [brt:app_name()]} | brt:err_result().
-analyze_app_to_app(AppName, AppDir, DepsDir, Analysis) ->
-    case load_xref(AppName, AppDir, DepsDir) of
-        'ok' ->
-            case xref:analyze(?XREF, {Analysis, AppName}) of
-                {'ok', Result} ->
-                    {'ok', lists:delete(AppName, Result)};
-                XRefErr ->
-                    xref_error(XRefErr)
-            end;
-        Error ->
-            Error
-    end.
-
--spec load_xref(
-        AppName     :: brt:app_name(),
-        AppDir      :: brt:fs_path(),
-        DepsDirs    :: [brt:fs_path()])
-        -> 'ok' | brt:err_result().
-load_xref(AppName, AppDir, DepsDirs) ->
-    case is_app_dir(AppDir) of
-        'true' ->
-            case erlang:whereis(?XREF) of
-                'undefined' ->
-                    'ok';
-                _ ->
-                    catch xref:stop(?XREF)
-            end,
-            case xref:start(?XREF, {'xref_mode', 'modules'}) of
-                {'ok', _Pid} ->
-                    case dep_specs(DepsDirs, [{AppName, AppDir}]) of
-                        {'ok', AppSpecs} ->
-                            add_apps(AppSpecs);
-                        DepErr ->
-                            DepErr
-                    end;
-                {'error', {'already_started', _}} ->
-                    {'error', {'xref', 'stop_failed'}};
-                {'error', What} ->
-                    {'error', {'xref', What}};
-                Other ->
-                    {'error', {'xref', Other}}
-            end;
-        _ ->
-            erlang:error('badarg', [AppName, AppDir, DepsDirs])
-    end.
-
--spec add_apps(Apps :: [dep_spec()]) -> 'ok' | xref_error().
-add_apps([{AppName, AppDir} | Apps]) ->
-    case xref:add_application(?XREF, AppDir, [{'name', AppName}]) of
-        {'ok', _} ->
-            add_apps(Apps);
-        XRefErr ->
-            xref_error(XRefErr)
-    end;
-add_apps([]) ->
-    'ok'.
-
--spec dep_specs(DepsDirs :: [brt:fs_path()], Result :: [dep_spec()])
-        -> [dep_spec()] | brt:err_result().
-dep_specs([DepsDir | DepsDirs], Result) ->
-    case file:list_dir(DepsDir) of
-        {'ok', DepDirs} ->
-            dep_specs(DepsDirs, dep_specs(DepDirs, DepsDir, Result));
-        {'error', What} ->
-            brt:file_error(DepsDir, What)
-    end;
-dep_specs([], Result) ->
-    {'ok', Result}.
-
--spec dep_specs(
-        Dirs    :: [brt:fs_path()],
-        DepsDir :: brt:fs_path(),
-        Result  :: [dep_spec()])
-        -> [dep_spec()] | brt:err_result().
-dep_specs([Dir | Dirs], DepsDir, Result) ->
-    DepDir = filename:join(DepsDir, Dir),
-    case is_app_dir(DepDir) of
-        'true' ->
-            DepName = brt:app_dir_to_name(Dir),
-            case lists:keymember(DepName, 1, Result) of
-                'false' ->
-                    DepSpec = {DepName, DepDir},
-                    dep_specs(Dirs, DepsDir, [DepSpec | Result]);
-                _ ->
-                    dep_specs(Dirs, DepsDir, Result)
-            end;
-        _ ->
-            dep_specs(Dirs, DepsDir, Result)
-    end;
-dep_specs([], _, Result) ->
-    Result.
-
--spec is_app_dir(Dir :: brt:fs_path()) -> boolean().
-is_app_dir(Dir) ->
-    filelib:is_dir(filename:join(Dir, "ebin")).
-
 -spec xref_error(Error :: xref_error()) -> {'error', string()}.
 xref_error(Error) ->
-%%    erlang:error(lists:flatten(xref:format_error(Error))).
     {'error', lists:flatten(xref:format_error(Error))}.

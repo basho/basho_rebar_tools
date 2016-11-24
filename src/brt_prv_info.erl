@@ -75,9 +75,11 @@ format_error(Error) ->
 %% Internal
 %%====================================================================
 
+-spec short_desc() -> string().
 short_desc() ->
     "Information about " ?APP_NAME_DISPLAY.
 
+-spec long_desc() -> string().
 long_desc() ->
     short_desc().
 

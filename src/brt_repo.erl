@@ -252,7 +252,7 @@ repo_version([], _Repo) ->
         RunDir  :: dir(),
         ExeArgs :: [string()],
         ExeEnv  :: [{string(), string() | 'false'}])
-        -> {'ok', [string()]} | brt:err_result() | no_return().
+        -> {'ok', [string()]} | brt:err_result().
 %
 % On success, output lines are returned in reverse order for efficiency!
 %   There's a method to my madness - on success, there's often only one line

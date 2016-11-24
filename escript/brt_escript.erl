@@ -79,7 +79,7 @@ main(Args) ->
 %% Command Handler
 %% ===================================================================
 
--spec run(Args :: [string()]) -> term() | no_return().
+-spec run(Args :: [string()]) -> term().
 
 run(["deps", AppDir]) ->
     {ProdApps, TestApps} = xref_app_deps(AppDir),
@@ -91,49 +91,15 @@ run(["deps", AppDir]) ->
 run(["info"]) ->
     brt_io:write_info('standard_io');
 
-run(["mk", "help"]) ->
-    io:put_chars(
-        "Write Makefile to standard output or a file.\n"
-        "<app-dir> must be a sibling of its dependencies.\n"
-        "mk <app-dir>\n"
-        "mk create <app-dir> <output-file> <overwite>\n"
-        "mk update <app-dir> <output-file> <must-exist>\n"
-    );
-
 run(["mk", AppDir]) ->
     {ProdApps, TestApps} = xref_app_deps(AppDir),
     Make = brt_defaults:makefile(ProdApps, TestApps),
     io:put_chars(Make);
 
-run(["mk", "create", AppDir, Makefile, Overwrite]) ->
-    brt_make:create_makefile(brt:app_dir_to_name(AppDir),
-        AppDir, filename:dirname(AppDir), Makefile, brt:to_atom(Overwrite));
-
-run(["mk", "update", AppDir, Makefile, MustExist]) ->
-    brt_make:update_makefile(brt:app_dir_to_name(AppDir),
-        AppDir, filename:dirname(AppDir), Makefile, brt:to_atom(MustExist));
-
-run(["rc", "help"]) ->
-    io:put_chars(
-        "Write rebar.config to standard output or a file.\n"
-        "<app-dir> must be a sibling of its dependencies.\n"
-        "rc <app-dir>\n"
-        "rc create <app-dir> <output-file> <overwite>\n"
-        "rc update <app-dir> <output-file> <must-exist>\n"
-    );
-
 run(["rc", AppDir]) ->
     {ProdApps, TestApps} = xref_app_deps(AppDir),
     Conf = brt_defaults:rebar_config(ProdApps, TestApps, []),
     brt_io:write_rebar_config('standard_io', Conf, 'current');
-
-run(["rc", "create", AppDir, CfgFile, Overwrite]) ->
-    brt_rebar:create_rebar_config(brt:app_dir_to_name(AppDir),
-        AppDir, filename:dirname(AppDir), CfgFile, brt:to_atom(Overwrite));
-
-run(["rc", "update", AppDir, CfgFile, MustExist]) ->
-    brt_rebar:update_rebar_config(brt:app_dir_to_name(AppDir),
-        AppDir, filename:dirname(AppDir), CfgFile, brt:to_atom(MustExist));
 
 run(Args) ->
     erlang:error('badarg', [Args]).
@@ -244,18 +210,25 @@ error_exit(Class, What, Stack) ->
     erlang:halt(1).
 
 -spec xref_app_deps(AppDir :: brt:fs_path())
-        -> {'ok', [brt:app_name()], [brt:app_name()]} | no_return().
+        -> {[brt:app_name()], [brt:app_name()]}.
 xref_app_deps(AppDir) ->
     AppName = brt:app_dir_to_name(AppDir),
+    AppSpec = {AppName, AppDir},
     DepsDir = filename:dirname(AppDir),
-    case brt_xref:app_deps(AppName, AppDir, DepsDir) of
-        {'ok', ProdApps, TestApps} ->
-            {ProdApps, TestApps};
-        {'error', What} ->
-            erlang:error(What)
+    case brt_xref:new([AppSpec, {DepsDir}]) of
+        {'ok', XRef} ->
+            case brt_xref:app_deps(XRef, [AppName]) of
+                {'ok', XrefDeps} ->
+                    {XrefDeps -- [AppName],
+                        brt_fudge:test_deps(AppSpec) -- XrefDeps};
+                {'error', DepsErr} ->
+                    erlang:error(DepsErr)
+            end;
+        {'error', NewErr} ->
+            erlang:error(NewErr)
     end.
 
--spec setup_app_env() -> 'ok' | brt:err_result() | no_return().
+-spec setup_app_env() -> 'ok' | brt:err_result().
 %
 % Set up the application environment and initialize configuration.
 %
@@ -314,7 +287,7 @@ setup_app_env() ->
             erlang:error('bad_structure', [AppDir])
     end.
 
--spec deref_symlinks(AbsPath :: brt:fs_path()) -> brt:fs_path() | no_return().
+-spec deref_symlinks(AbsPath :: brt:fs_path()) -> brt:fs_path().
 %
 % Dereference the specified absolute path, possibly recursively, until we get
 % to something that exists and is not a symbolic link.

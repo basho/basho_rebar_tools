@@ -88,7 +88,6 @@ format_error(Error) ->
 % providers.
 %
 init_providers([Mod | Mods], {'ok', State}) ->
-%%    ?BRT_VAR(Mod),
     init_providers(Mods, Mod:init(State));
 init_providers([], Result) ->
     Result.

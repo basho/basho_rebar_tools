@@ -33,12 +33,15 @@
     dep_list/1,
     dep_list_member/2,
     dep_name/1,
+    file_error/2,
+    find_first/2,
+    find_first/3,
     format_error/1,
     get_key_list/2,
     get_key_tuple/2,
     get_key_value/2,
-    file_error/2,
     implements_behaviour/1,
+    is_app_dir/1,
     is_list_key/2,
     list_modules/1,
     read_app_file/2,
@@ -50,6 +53,9 @@
 % Types
 -export_type([
     app_name/0,
+    app_out_dir/0,
+    app_spec/0,
+    app_src_dir/0,
     basho_year/0,
     dep_loc/0,
     dep_spec/0,
@@ -84,6 +90,9 @@
 -endif.
 
 -type app_name()    ::  atom().
+-type app_out_dir() ::  fs_path().
+-type app_spec()    ::  {app_name(), app_src_dir(), app_out_dir()}.
+-type app_src_dir() ::  fs_path().
 -type basho_year()  ::  ?BASHO_YEAR_MIN..9999 | 'current'.
 -type dep_loc()     ::  string().   % currently, always a GitHub URL
 -type dep_spec()    ::  {app_name(), rsrc_spec() | rsrc_wrap()}.
@@ -133,16 +142,38 @@ implements_behaviour(Module) ->
 %% API
 %% ===================================================================
 
--spec app_dir_to_name(AppDir :: fs_path()) -> app_name() | no_return().
+-spec app_dir_to_name(AppDir :: fs_path()) -> app_name().
 %%
 %% @doc Return the name of the app residing in AppDir.
 %%
+%% If there is exactly one .app file in AppDir's 'ebin' directory, the
+%% application name from that file is returned, otherwise the basename of the
+%% directory with any version suffix removed is returned.
+%%
+%% An error is raised if a malformed .app file is encountered.
+%%
 app_dir_to_name(AppDir) ->
-    erlang:list_to_atom(erlang:hd(
-        string:tokens(filename:basename(AppDir), "-"))).
+    case filelib:wildcard(filename:join([AppDir, "ebin", "*.app"])) of
+        [AppFile] ->
+            case file:consult(AppFile) of
+                {'ok', App} ->
+                    case App of
+                        [{'application', AppName, [_|_]}] ->
+                            AppName;
+                        _ ->
+                            erlang:error('app_malformed', [AppFile])
+                    end;
+                {'error', What} ->
+                    {'error', Error} = file_error(AppFile, What),
+                    erlang:error(Error)
+            end;
+        _ ->
+            erlang:list_to_atom(erlang:hd(
+                string:tokens(filename:basename(AppDir), "-")))
+    end.
 
 -spec consult_app_file(Dir :: atom() | string(), FileName :: string())
-        -> {'ok', [term()]} | err_result() | no_return().
+        -> {'ok', [term()]} | err_result().
 %%
 %% @doc Return the terms in FileName in the specified application directory.
 %%
@@ -203,6 +234,37 @@ dep_name(Arg) ->
 file_error(File, What) ->
     {'error', lists:flatten([File, ": ", file:format_error(What)])}.
 
+-spec find_first(Names :: [fs_path()], Paths :: [fs_path()])
+        -> fs_path() | 'false'.
+%%
+%% @doc Finds the first filesystem element with one of Names relative to Paths.
+%%
+%% Equivalent to `find_first('any', Names, Paths)'.
+%%
+find_first(Names, Paths) ->
+    find_first(Names, Paths, 'is_file', Names).
+
+-spec find_first(
+        Type    :: 'dir' | 'file' | 'any',
+        Names   :: [fs_path()],
+        Paths   :: [fs_path()])
+        -> fs_path() | 'false'.
+%%
+%% @doc Finds the first filesystem Type with one of Names relative to Paths.
+%%
+%% All Names are evaluated in each of Paths, in order, until a matching
+%% existing filesystem element is found and returned.
+%% If none of Names exist relative to any of Paths, 'false' is returned.
+%%
+find_first('any', Names, Paths) ->
+    find_first(Names, Paths, 'is_file', Names);
+find_first('dir', Names, Paths) ->
+    find_first(Names, Paths, 'is_dir', Names);
+find_first('file', Names, Paths) ->
+    find_first(Names, Paths, 'is_regular', Names);
+find_first(Type, Names, Paths) ->
+    erlang:error('badarg', [Type, Names, Paths]).
+
 -spec format_error(Error :: term()) -> iolist().
 %%
 %% @doc Map errors to consistent messages.
@@ -210,15 +272,27 @@ file_error(File, What) ->
 format_error(Error) when erlang:is_list(Error) ->
     Error;
 format_error('app_undefined') ->
-    "No top-level application defined.";
-format_error({'copyright_dirty', File}) ->
-    [File, ": Multiple or non-Basho copyrights, adjust manually"];
+    "No top-level application defined";
+format_error('copyright_dirty') ->
+    "Multiple or non-Basho copyrights, adjust manually";
 format_error('deps_mismatch') ->
-    "Static and calculated dependencies differ.";
+    "Static and calculated dependencies differ";
+format_error({?MODULE, What}) ->
+    format_error(What);
+format_error({'error', What}) ->
+    format_error(What);
+format_error({Atom, What}) when erlang:is_atom(Atom) ->
+    case erlang:function_exported(Atom, 'format_error', 1) of
+        'true' ->
+            Atom:format_error(What);
+        _ ->
+            % What *should* be a filesystem path, and Atom is the error.
+            io_lib:format("~s: ~s", [What, format_error(Atom)])
+    end;
 format_error(Error) ->
     io_lib:format("~p", [Error]).
 
--spec get_key_list(Key :: term(), Terms :: list()) -> list() | no_return().
+-spec get_key_list(Key :: term(), Terms :: list()) -> list().
 %%
 %% @doc Returns the list associated with the specified Key in Terms.
 %%
@@ -237,8 +311,7 @@ get_key_list(Key, Terms) ->
             erlang:error('badarg', [Key, Terms])
     end.
 
--spec get_key_tuple(Key :: term(), Terms :: list())
-        -> 'undefined' | tuple() | no_return().
+-spec get_key_tuple(Key :: term(), Terms :: list()) -> 'undefined' | tuple().
 %%
 %% @doc Returns the tuple whose first element is Key in Terms.
 %%
@@ -258,8 +331,7 @@ get_key_tuple(Key, [_ | Terms]) ->
 get_key_tuple(_, []) ->
     'undefined'.
 
--spec get_key_value(Key :: term(), Terms :: list())
-        -> 'undefined' | term() | no_return().
+-spec get_key_value(Key :: term(), Terms :: list()) -> 'undefined' | term().
 %%
 %% @doc Returns the value associated with the specified Key in Terms.
 %%
@@ -276,6 +348,19 @@ get_key_value(Key, Terms) ->
         _ ->
             erlang:error('badarg', [Key, Terms])
     end.
+
+-spec is_app_dir(Dir :: fs_path()) -> boolean().
+%%
+%% @doc Reports whether the specified directory contains an application.
+%%
+is_app_dir(Dir) ->
+    EBin = filename:join(Dir, "ebin"),
+    % In almost all cases there will be a small, non-zero number (usually one)
+    % of .app files in the ebin directory, so hopefully that'll be more
+    % efficient than building the list of BEAMs.
+    filelib:is_dir(EBin) andalso (
+        filelib:wildcard("*.app", EBin) /= [] orelse
+        filelib:wildcard("*.beam", EBin) /= [] ).
 
 -spec is_list_key(Key :: term(), Terms :: list()) -> boolean().
 %%
@@ -325,7 +410,7 @@ list_modules(ModPrefix) ->
 -endif.
 
 -spec read_app_file(Dir :: atom() | string(), FileName :: string())
-        -> {'ok', binary()} | err_result() | no_return().
+        -> {'ok', binary()} | err_result().
 %%
 %% @doc Return the contents of FileName in the specified application directory.
 %%
@@ -342,8 +427,7 @@ read_app_file(Dir, FileName) ->
     file_operation('read_file', Dir, FileName).
 -endif.
 
--spec to_atom(Term :: atom() | binary() | [byte() | [byte()]])
-        -> atom() | no_return().
+-spec to_atom(Term :: atom() | binary() | [byte() | [byte()]]) -> atom().
 %%
 %% @doc Return Term as an atom.
 %%
@@ -356,8 +440,7 @@ to_atom(Term) when erlang:is_list(Term) ->
 to_atom(Term) ->
     erlang:error('badarg', [Term]).
 
--spec to_binary(Term :: atom() | binary() | [byte() | [byte()]])
-        -> binary() | no_return().
+-spec to_binary(Term :: atom() | binary() | [byte() | [byte()]]) -> binary().
 %%
 %% @doc Return Term as a binary.
 %%
@@ -370,8 +453,7 @@ to_binary(Term) when erlang:is_list(Term) ->
 to_binary(Term) ->
     erlang:error('badarg', [Term]).
 
--spec to_string(Term :: atom() | binary() | [char() | [char()]])
-        -> string() | no_return().
+-spec to_string(Term :: atom() | binary() | [char() | [char()]]) -> string().
 %%
 %% @doc Return Term as a flat array of characters.
 %%
@@ -384,7 +466,13 @@ to_string(Term) when erlang:is_list(Term) ->
         'true' ->
             lists:flatten(Term);
         _ ->
-            erlang:error('badarg', [Term])
+            % go the extra mile in case it's an iolist()
+            try
+                lists:flatten(io_lib:format("~s", [Term]))
+            catch
+                'error':'badarg' ->
+                    erlang:error('badarg', [Term])
+            end
     end;
 to_string(Term) ->
     erlang:error('badarg', [Term]).
@@ -395,7 +483,7 @@ to_string(Term) ->
 
 -spec file_operation(
     Func :: atom(), Dir :: atom() | string(), FileName :: string())
-        -> {'ok', term()} | err_result() | no_return().
+        -> {'ok', term()} | err_result().
 %
 % Invoke file:Func(FullFilePath) on an application file.
 %
@@ -413,11 +501,33 @@ file_operation(Func, Dir, FileName) ->
             end
     end.
 
+-spec find_first(
+        Names       :: [fs_path()],
+        Paths       :: [fs_path()],
+        Func        :: 'is_dir' | 'is_file' | 'is_regular',
+        AllNames    :: [fs_path()])
+        -> fs_path() | 'false'.
+%
+% Apply Func to each of Names relative to each of Paths until one is found.
+%
+find_first([Name | Names], [Path | _] = Paths, Func, AllNames) ->
+    Elem = filename:absname(Name, Path),
+    case filelib:Func(Elem) of
+        'true' ->
+            Elem;
+        _ ->
+            find_first(Names, Paths, Func, AllNames)
+    end;
+find_first([], [_ | Paths], Func, Names) ->
+    find_first(Names, Paths, Func, Names);
+find_first(_, [], _, _) ->
+    'false'.
+
 %
 % VERY tightly coupled code follows - beware infinite recursion!
 %
 
--spec brt_dir(atom() | string()) -> fs_path() | err_result() | no_return().
+-spec brt_dir(atom() | string()) -> fs_path() | err_result().
 
 brt_dir('app' = What) ->
     Key = {?MODULE, What},
@@ -522,12 +632,12 @@ brt_dir(Dir) when erlang:is_atom(Dir) ->
 brt_dir(Arg) ->
     erlang:error('badarg', [Arg]).
 
--spec find_priv_dir() -> fs_path() | err_result() | no_return().
+-spec find_priv_dir() -> fs_path() | err_result().
 
 find_priv_dir() ->
     find_priv_dir(['app', 'obj', 'this']).
 
--spec find_priv_dir([atom()]) -> fs_path() | err_result() | no_return().
+-spec find_priv_dir([atom()]) -> fs_path() | err_result().
 
 find_priv_dir(['app' = Parent | More]) ->
     Dir = filename:join(brt_dir(Parent), "priv"),

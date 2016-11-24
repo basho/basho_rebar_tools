@@ -32,22 +32,41 @@
 %
 % Keep these usable as guard conditions.
 %
--define(is_app_name(Name),  erlang:is_atom(Name)).
+-define(is_tuple_exact(Size, Term),
+    erlang:is_tuple(Term) andalso erlang:tuple_size(Term) == Size).
+-define(is_tuple_exact(First, Size, Term),
+    ?is_tuple_exact(Size, Term) andalso erlang:element(1, Term) =:= First).
+-define(is_tuple_minmax(Min, Max, Term), erlang:is_tuple(Term)
+    andalso erlang:tuple_size(Term) >= Min
+    andalso erlang:tuple_size(Term) =< Max).
+-define(is_tuple_minmax(First, Min, Max, Term),
+    ?is_tuple_minmax(Min, Max, Term) andalso erlang:element(1, Term) =:= First).
 
--define(is_rebar_dep(Spec), erlang:is_tuple(Spec)
-    andalso erlang:tuple_size(Spec) >= 2
-    andalso erlang:tuple_size(Spec) =< 4
-    andalso erlang:is_atom(erlang:element(1, Spec))).
+-define(is_app_name(Name), erlang:is_atom(Name)).
 
--define(is_rebar_dep(Name, Spec), erlang:is_tuple(Spec)
-    andalso erlang:tuple_size(Spec) >= 2
-    andalso erlang:tuple_size(Spec) =< 4
-    andalso erlang:element(1, Spec) =:= Name).
+%
+% In Rebar3, a dependency is almost always a 2-tuple, but legacy Rebar2 deps
+% may have as many as 4 elements.
+%
+-define(is_rebar_dep(Term), ?is_tuple_minmax(2, 4, Term)
+    andalso erlang:is_atom(erlang:element(1, Term))).
+-define(is_rebar_dep(Name, Term), ?is_tuple_minmax(Name, 2, 4, Term)).
+
+%
+% As of this writing, sizes of the Rebar types, including the record name atom,
+% are:
+%   rebar_state:t()     19
+%   rebar_app_info:t()  21
+%
+% Allow +-4 on their sizes.
+%
+-define(is_rebar_state(Term), ?is_tuple_minmax('state_t', 15, 23, Term)).
+-define(is_rebar_app_info(Term), ?is_tuple_minmax('app_info_t', 17, 25, Term)).
 
 %
 % The earliest legitimate Basho copyright year.
 % Basho was founded in 2008, but it was in January, so there are some 2007
-% copyrights that are arguably ok.
+% copyrights - a lot of them, actually - that are arguably ok.
 %
 -define(BASHO_YEAR_MIN, 2007).
 
@@ -67,5 +86,8 @@
 -ifdef(brt_escript).
 -define(BRT_ESCRIPT_IO_MOD_KEY, 'brt_escript_app_io_mod').
 -endif.
+
+% Syntactic sugar.
+-define(else,   true).
 
 -endif. % brt_included

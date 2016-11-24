@@ -81,7 +81,7 @@ current_year() ->
     {{Year, _, _}, _} = calendar:local_time(),
     Year.
 
--spec file_data(FileName :: brt:fs_path()) -> binary() | no_return().
+-spec file_data(FileName :: brt:fs_path()) -> binary().
 %%
 %% @doc Returns the default data for the specified FileName.
 %%
@@ -97,7 +97,7 @@ file_data(FileName) ->
             erlang:error(What)
     end.
 
--spec file_terms(FileName :: brt:fs_path()) -> [term()] | no_return().
+-spec file_terms(FileName :: brt:fs_path()) -> [term()].
 %%
 %% @doc Returns the default terms for the specified FileName.
 %%
@@ -135,7 +135,7 @@ editor_makefile() ->
 -spec makefile(
         ProdDeps    :: [brt:app_name() | brt:dep_spec()],
         TestDeps    :: [brt:app_name() | brt:dep_spec()])
-        -> iolist() | no_return().
+        -> iolist().
 %%
 %% @doc Returns a Basho standard Makefile body.
 %%
@@ -151,7 +151,7 @@ makefile(ProdDeps, TestDeps) ->
         ProdDeps    :: [brt:app_name() | brt:dep_spec()],
         TestDeps    :: [brt:app_name() | brt:dep_spec()],
         PluginDeps  :: [brt:app_name() | brt:dep_spec()])
-        -> [tuple()] | no_return().
+        -> brt:rebar_conf().
 %%
 %% @doc Returns the Basho-standard rebar.config properties list.
 %%
@@ -166,24 +166,47 @@ makefile(ProdDeps, TestDeps) ->
 %% @see makefile/2
 %%
 rebar_config(ProdDeps, TestDeps, PluginDeps) ->
-    Default = file_terms("rebar.config"),
-    AppDeps = lists:foldl(
-        fun(AppOrDep, Result) ->
-            case brt:dep_list_member(AppOrDep, Result) of
+    DFTerms = file_terms("rebar.config"),
+    %
+    % Prior to Rebar3 there are no profiles, so there's no opportunity to
+    % override the 'no_debug_info' pseudo option.
+    % If it can't be overridden, don't let it in in the first place.
+    %
+    Default = case brt_rebar:config_format() < 3 of
+        'true' ->
+            Opts  = brt:get_key_list('erl_opts', DFTerms),
+            case lists:member('no_debug_info', Opts) of
                 'true' ->
-                    Result;
+                    lists:keyreplace('erl_opts', 1, DFTerms, {'erl_opts',
+                        lists:delete('no_debug_info', lists:usort(Opts))});
                 _ ->
-                    [brt_config:pkg_dep(AppOrDep) | Result]
+                    DFTerms
+            end;
+        _ ->
+            DFTerms
+    end,
+    AppDeps = lists:foldl(
+        fun(AAppOrDep, AResult) ->
+            case brt:dep_list_member(AAppOrDep, AResult) of
+                'true' ->
+                    AResult;
+                _ ->
+                    [brt_config:pkg_dep(AAppOrDep) | AResult]
             end
         end, [], ProdDeps),
     TstDeps = lists:foldl(
-        fun(AppOrDep, Result) ->
-            case brt:dep_list_member(AppOrDep, Result) orelse
-                    brt:dep_list_member(AppOrDep, AppDeps) of
-                'true' ->
-                    Result;
+        fun(TAppOrDep, TResult) ->
+            % nest the tests because dialyzer can't grok them orelse'd together
+            case brt:dep_list_member(TAppOrDep, TResult) of
+                'false' ->
+                    case brt:dep_list_member(TAppOrDep, AppDeps) of
+                        'false' ->
+                            [brt_config:pkg_dep(TAppOrDep) | TResult];
+                        _ ->
+                            TResult
+                    end;
                 _ ->
-                    [brt_config:pkg_dep(AppOrDep) | Result]
+                    TResult
             end
         end, [], TestDeps),
     Plugins = brt_config:dep_plugins(TstDeps ++ AppDeps, PluginDeps),

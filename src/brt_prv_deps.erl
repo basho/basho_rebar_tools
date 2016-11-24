@@ -40,7 +40,12 @@
     {'list', $l, "list", 'boolean',
         "List the full dependency specifications."},
     {'short', $s, "short", 'boolean',
-        "List the dependency names [default]."}
+        "List the dependency names [default]."},
+    {'recurse', $r, "recurse", 'boolean',
+        "Apply the operation to all (true) dependencies, recursively."},
+    {'rebar2', $2, "rebar2", 'boolean',
+        "Write dependencies in Rebar2 format."
+        "Only meaningful in list (-l|--list) mode."}
 ]).
 
 %% ===================================================================
@@ -70,9 +75,16 @@ init(State) ->
 %% @doc Execute the provider command logic.
 %%
 do(State) ->
-    {Args, _} = rebar_state:command_parsed_args(State),
-    ?BRT_VAR(Args),
-    handle_command(['check', 'list', 'short'], Args, State).
+    {Opts, _} = rebar_state:command_parsed_args(State),
+    ConfigVsn = case proplists:get_value('rebar2', Opts) of
+        'true' ->
+            brt_rebar:config_format('rebar2');
+        _ ->
+            brt_rebar:config_format()
+    end,
+    Result = handle_command(Opts, State),
+    _ = brt_rebar:config_format(ConfigVsn),
+    Result.
 
 -spec format_error(Error :: term()) -> iolist().
 %%
@@ -82,63 +94,134 @@ format_error(Error) ->
     brt:format_error(Error).
 
 %%====================================================================
+%% Help Text
+%%====================================================================
+
+-spec short_desc() -> nonempty_string().
+short_desc() ->
+    "Lists or verifies the true dependencies of the current project.".
+
+-spec long_desc() -> nonempty_string().
+long_desc() ->
+    short_desc() ++ "\n".
+
+%%====================================================================
 %% Internal
 %%====================================================================
 
-handle_command(['check' = Opt | Opts], Args, State) ->
-    case proplists:get_value(Opt, Args) of
-        'true' ->
-            case brt_xref:app_deps(State) of
-                {'ok', ProdApps, _TestApps} ->
-                    RebarDeps = lists:sort(
-                        [brt:to_atom(R) || R <- rebar_state:deps_names(State)]),
-                    ProdDeps = lists:sort(ProdApps),
-                    case RebarDeps =:= ProdDeps of
-                        'true' ->
+-type context() ::  {brt_xref:xref(), boolean()}.
+
+-spec handle_command(
+        Opts :: [proplists:property()], State :: brt:rebar_state())
+        -> {'ok', brt:rebar_state()} | brt:prv_error().
+handle_command(Opts, State) ->
+    case brt_xref:new(State) of
+        {'ok', XRef} ->
+            Targets = case proplists:get_value('recurse', Opts) of
+                'true' ->
+                    'all';
+                _ ->
+                    brt_rebar:prj_app_specs(State)
+            end,
+            Result = case proplists:get_value('check', Opts) of
+                'true' ->
+                    CCtx = {XRef, 'true'},
+                    case brt_rebar:fold(Targets, fun check/3, CCtx, State) of
+                        {'ok', {_, 'true'}} ->
                             {'ok', State};
-                        _ ->
-                            {'error', {?MODULE, 'deps_mismatch'}}
+                        {'ok', _} ->
+                            {'error', {?MODULE, 'deps_mismatch'}};
+                        CErr ->
+                            CErr
                     end;
-                {'error', _} = XRefErr ->
-                    XRefErr
-            end;
-        _ ->
-            handle_command(Opts, Args, State)
-    end;
-
-handle_command(['list' = Opt | Opts], Args, State) ->
-    case proplists:get_value(Opt, Args) of
-        'true' ->
-            case brt_xref:app_deps(State) of
-                {'ok', ProdApps, TestApps} ->
-                    io:put_chars("Prod:\n"),
-                    brt_io:write_deps('standard_io', 1, lists:sort(ProdApps)),
-                    io:put_chars("Test:\n"),
-                    brt_io:write_deps('standard_io', 1, lists:sort(TestApps)),
-                    {'ok', State};
-                {'error', _} = XRefErr ->
-                    XRefErr
-            end;
-        _ ->
-            handle_command(Opts, Args, State)
-    end;
-
-% 'short' - this is the default, so no need to check.
-handle_command(_, _, State) ->
-    case brt_xref:app_deps(State) of
-        {'ok', ProdApps, TestApps} ->
-            io:put_chars("Prod:\n"),
-            [io:format("    ~s~n", [PA]) || PA <- lists:sort(ProdApps)],
-            io:put_chars("Test:\n"),
-            [io:format("    ~s~n", [TA]) || TA <- lists:sort(TestApps)],
-            {'ok', State};
-        {'error', _} = XRefErr ->
-            XRefErr
+                _ ->
+                    DCtx = {XRef, proplists:get_value('list', Opts, 'false')},
+                    case brt_rebar:fold(Targets, fun display/3, DCtx, State) of
+                        {'ok', _} ->
+                            {'ok', State};
+                        DErr ->
+                            DErr
+                    end
+            end,
+            brt_xref:stop(XRef),
+            Result;
+        Error ->
+            Error
     end.
 
-short_desc() ->
-    "Lists or verifies the true dependencies of the current project".
+-spec check(
+        App     :: brt:app_spec(),
+        Context :: context(),
+        State   :: brt:rebar_state())
+        -> {'ok', context()} | brt:prv_error().
 
-long_desc() ->
-    short_desc().
+check({Name, _, _} = App, {XRef, _} = Context, State) ->
+    rebar_api:debug("~s:check/3: App = ~p", [?MODULE, App]),
+    case brt_xref:app_deps(XRef, Name) of
+        {'ok', XrefApps} ->
+            AppInfo = brt_rebar:app_info(Name, State),
+            ConfDeps = lists:sort([brt:to_atom(R)
+                || R <- rebar_app_info:deps(AppInfo)]),
+            CalcDeps = lists:sort(XrefApps -- [Name]),
+            case ConfDeps =:= CalcDeps of
+                'true' ->
+                    rebar_api:info("Dependencies match: ~s", [Name]),
+                    {'ok', Context};
+                _ ->
+                    rebar_api:warn("Dependency mismatch: ~s", [Name]),
+                    {'ok', {XRef, 'false'}}
+            end;
+        Error ->
+            Error
+    end.
+
+-spec display(
+        App     :: brt:app_spec(),
+        Context :: context(),
+        State   :: brt:rebar_state())
+        -> {'ok', context()} | brt:prv_error().
+
+display({Name, _, _} = App, {XRef, Long} = Context, _State) ->
+    rebar_api:debug("~s:display/3: App = ~p", [?MODULE, App]),
+    case brt_xref:app_deps(XRef, Name) of
+        {'ok', XrefApps} ->
+            Prod = XrefApps -- [Name],
+            Test = brt_fudge:test_deps(App) -- XrefApps,
+            io:format("~s:~n", [Name]),
+            display_deps(Long, 1, Prod, Test),
+            {'ok', Context};
+        Error ->
+            Error
+    end.
+
+-spec display_deps(
+        Long    :: boolean(),
+        Indent  :: non_neg_integer() | iolist(),
+        Prod    :: [brt:app_name()],
+        Test    :: [brt:app_name()])
+        -> 'ok'.
+
+display_deps(Long, Indent, Prod, []) ->
+    display_deps(Long, brt_io:inc_indent(Indent), Prod);
+
+display_deps(Long, Level, Prod, Test) ->
+    Indent = brt_io:indent(Level),
+    SubInd = brt_io:inc_indent(Indent),
+    io:put_chars([Indent, "Prod:\n"]),
+    display_deps(Long, SubInd, Prod),
+    io:put_chars([Indent, "Test:\n"]),
+    display_deps(Long, SubInd, Test).
+
+-spec display_deps(
+        Long    :: boolean(),
+        Indent  :: iolist(),
+        Apps    :: [brt:app_name()])
+        -> 'ok'.
+
+display_deps('true', Indent, Apps) ->
+    brt_io:write_deps('standard_io', Indent, Apps);
+
+display_deps('false', Indent, Apps) ->
+    [io:format("~s'~s'~n", [Indent, A]) || A <- Apps],
+    'ok'.
 

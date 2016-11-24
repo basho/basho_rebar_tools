@@ -27,23 +27,41 @@
     dep_erl_opts/2,
     dep_makefile/2,
     dep_plugins/2,
-    init/0, init/1,
-    pkg_dep/1, pkg_dep/2,
+    init/0,
+    init/1,
+    merge/1,
+    pkg_dep/1,
+    pkg_dep/2,
     pkg_repo/2,
-    pkg_version/2
+    pkg_version/2,
+    reset/1
+]).
+
+-export_type([
+    state/0
 ]).
 
 -include("brt.hrl").
 
+-record(saved, {
+    file    :: brt:fs_path(),
+    conf    :: config()
+}).
+
+-type state()   ::  #saved{}.
 -type config()  ::  [{atom(), term()}].
 
 -define(CONFIG_TERMS_KEY,       {?MODULE, 'terms'}).
--define(GET_CONFIG_TERMS(),     erlang:get(?CONFIG_TERMS_KEY)).
--define(SET_CONFIG_TERMS(New),  erlang:put(?CONFIG_TERMS_KEY, New)).
+-define(CONFIG_TERMS(),         erlang:get(?CONFIG_TERMS_KEY)).
+-define(CONFIG_TERMS(New),      erlang:put(?CONFIG_TERMS_KEY, New)).
 
 -define(CONFIG_FILE_KEY,        {?MODULE, 'file'}).
--define(GET_CONFIG_FILE(),      erlang:get(?CONFIG_FILE_KEY)).
--define(SET_CONFIG_FILE(New),   erlang:put(?CONFIG_FILE_KEY, New)).
+-define(CONFIG_FILE(),          erlang:get(?CONFIG_FILE_KEY)).
+-define(CONFIG_FILE(New),       erlang:put(?CONFIG_FILE_KEY, New)).
+
+-define(BRT_CFG_NAMES_KEY,      {?MODULE, 'brt_config_names'}).
+-define(BRT_CFG_NAMES(),        erlang:get(?BRT_CFG_NAMES_KEY)).
+-define(BRT_CFG_NAMES(New),     erlang:put(?BRT_CFG_NAMES_KEY, New)).
 
 %
 % Implementation Notes:
@@ -65,28 +83,27 @@
 %% @doc Returns the current runtime configuration.
 %%
 config() ->
-    ?GET_CONFIG_TERMS().
+    ?CONFIG_TERMS().
 
 -spec config_file() -> brt:fs_path() | 'undefined'.
 %%
 %% @doc Returns the file from which the initial configuration was loaded.
 %%
 config_file() ->
-    ?GET_CONFIG_FILE().
+    ?CONFIG_FILE().
 
 -spec dep_erl_opts(
         Deps    :: [brt:app_name() | brt:dep_spec()],
         Opts    :: [atom() | tuple()])
-        -> [atom() | tuple()] | no_return().
+        -> [atom() | tuple()].
 %%
 %% @doc Returns Opts with Erlang compiler options needed by Deps included.
 %%
 dep_erl_opts(Deps, Opts) ->
     dep_erl_opts(Deps, Opts,
-        brt:get_key_list('dep_erl_opts', ?GET_CONFIG_TERMS())).
+        brt:get_key_list('dep_erl_opts', ?CONFIG_TERMS())).
 
--spec dep_makefile(Deps :: [brt:dep_spec()], Content :: iolist())
-        -> iolist() | no_return().
+-spec dep_makefile(Deps :: [brt:dep_spec()], Content :: iolist()) -> iolist().
 %%
 %% @doc Append dependency-specific rules to a makefile's content.
 %%
@@ -108,14 +125,14 @@ dep_makefile(_, Content) ->
 -spec dep_plugins(
         Deps    :: [brt:app_name() | brt:dep_spec()],
         Plugins :: [brt:dep_spec()])
-        -> [brt:dep_spec()] | no_return().
+        -> [brt:dep_spec()].
 %%
 %% @doc Returns Plugins with rebar plugins needed by Deps included.
 %%
 %% This plugin is always included in the result.
 %%
 dep_plugins(Deps, Plugins) ->
-    Config  = ?GET_CONFIG_TERMS(),
+    Config  = ?CONFIG_TERMS(),
     Conf    = brt:get_key_list('dep_plugins', Config),
     Raw     = brt:get_key_list('raw', Config),
     case brt:dep_list_member(?APP_NAME_ATOM, Plugins) of
@@ -125,7 +142,7 @@ dep_plugins(Deps, Plugins) ->
             dep_plugins(Deps, [?APP_NAME_ATOM | Plugins], Conf, Raw)
     end.
 
--spec init() -> 'ok' | brt:err_result() | no_return().
+-spec init() -> 'ok' | brt:err_result().
 %%
 %% @doc Initializes the runtime configuration.
 %%
@@ -133,19 +150,53 @@ init() ->
     {'ok', CWD} = file:get_cwd(),
     init([CWD]).
 
--spec init(Dirs :: [file:name()]) -> 'ok' | brt:err_result() | no_return().
+-spec init(Dirs :: [file:name()]) -> 'ok' | brt:err_result().
 %%
 %% @doc Initializes the runtime configuration.
 %%
 init(Dirs) ->
     DefaultFile = "brt.config",
-    FileName = case os:getenv("BRT_CONFIG") of
+    FileNames = case os:getenv("BRT_CONFIG") of
         'false' ->
-            DefaultFile;
+            [DefaultFile];
         Val ->
-            Val
+            [Val, DefaultFile]
     end,
-    init(Dirs, FileName, brt_defaults:file_terms(DefaultFile)).
+    ?BRT_CFG_NAMES(FileNames),
+    case init(Dirs, brt_defaults:file_terms(DefaultFile)) of
+        'ok' ->
+            brt_rebar:init();
+        Err ->
+            Err
+    end.
+
+-spec merge(AppDir :: brt:fs_path())
+        -> {'ok', state()} | brt:err_result().
+%%
+%% @doc Merges the BRT config file from Dir, if any, and returns a reset object.
+%%
+%% The state before the call can be restored by calling reset/1.
+%%
+merge(Dir) ->
+    Config  = config(),
+    State   = #saved{file = config_file(), conf = Config},
+    Exclude = brt:get_key_list('no_inherit', Config),
+    Inherit = lists:filter(
+        fun({Key, _}) -> not lists:member(Key, Exclude) end, Config),
+    case config_file(Dir) of
+        'false' ->
+            ?CONFIG_TERMS(Inherit),
+            {'ok', State};
+        File ->
+            case file:consult(File) of
+                {'ok', Local} ->
+                    ?CONFIG_TERMS(merge(Inherit, Local)),
+                    ?CONFIG_FILE(File),
+                    {'ok', State};
+                {'error', What} ->
+                    brt:file_error(File, What)
+            end
+    end.
 
 -spec pkg_dep(Package :: brt:app_name() | brt:dep_spec()) -> brt:dep_spec().
 %%
@@ -154,7 +205,7 @@ init(Dirs) ->
 pkg_dep(PkgSpec) when ?is_rebar_dep(PkgSpec) ->
     PkgSpec;
 pkg_dep(PkgName) ->
-    get_pkg_dep(?GET_CONFIG_TERMS(), brt:to_atom(PkgName)).
+    get_pkg_dep(?CONFIG_TERMS(), brt:to_atom(PkgName)).
 
 -spec pkg_dep(
         Package :: brt:app_name(), Spec :: brt:rsrc_spec() | brt:dep_spec())
@@ -171,11 +222,11 @@ pkg_dep(Package, Spec)
         _ ->
             {PkgName, Spec}
     end,
-    OldConf = ?GET_CONFIG_TERMS(),
+    OldConf = ?CONFIG_TERMS(),
     OldDeps = brt:get_key_list('deps', OldConf),
     NewDeps = lists:keystore(PkgName, 1, OldDeps, DepSpec),
     NewConf = lists:keystore('deps', 1, OldConf, {'deps', NewDeps}),
-    ?SET_CONFIG_TERMS(NewConf),
+    ?CONFIG_TERMS(NewConf),
     DepSpec;
 pkg_dep(Package, Spec) ->
     erlang:error('badarg', [Package, Spec]).
@@ -202,11 +253,11 @@ pkg_repo(Package, Repo) ->
         _ ->
             erlang:error('badarg', [Package, Repo])
     end,
-    OldConf = ?GET_CONFIG_TERMS(),
+    OldConf = ?CONFIG_TERMS(),
     OldReps = brt:get_key_list('repos', OldConf),
     NewReps = lists:keystore(PkgName, 1, OldReps, PkgRepo),
     NewConf = lists:keystore('repos', 1, OldConf, {'repos', NewReps}),
-    ?SET_CONFIG_TERMS(NewConf),
+    ?CONFIG_TERMS(NewConf),
     PkgRepo.
 
 -spec pkg_version(Package :: brt:app_name(), Version :: brt:dep_vsn())
@@ -224,26 +275,52 @@ pkg_version(Package, {Type, Label} = Version)
         _ ->
             erlang:error('badarg', [Package, Version])
     end,
-    OldConf = ?GET_CONFIG_TERMS(),
+    OldConf = ?CONFIG_TERMS(),
     OldVers = brt:get_key_list('versions', OldConf),
     NewVers = lists:keystore(PkgName, 1, OldVers, PkgVers),
     NewConf = lists:keystore('versions', 1, OldConf, {'versions', NewVers}),
-    ?SET_CONFIG_TERMS(NewConf),
+    ?CONFIG_TERMS(NewConf),
     PkgVers;
 pkg_version(Package, Version) when erlang:is_list(Version) ->
     pkg_version(Package, {'ref', Version});
 pkg_version(Package, Version) ->
     erlang:error('badarg', [Package, Version]).
 
+-spec reset(State :: state()) -> 'ok'.
+%%
+%% @doc Restores the BRT state returned by a previous merge/1 call.
+%%
+reset(#saved{file = File, conf = Conf}) ->
+    ?CONFIG_FILE(File),
+    ?CONFIG_TERMS(Conf),
+    'ok'.
+
 %% ===================================================================
 %% Internal
 %% ===================================================================
+
+-spec config_file(Dir :: brt:fs_path()) -> brt:fs_path() | 'false'.
+config_file(Dir) ->
+    config_file(?BRT_CFG_NAMES(), Dir).
+
+-spec config_file(Names :: [brt:fs_path()], Dir :: brt:fs_path())
+        -> brt:fs_path() | 'false'.
+config_file([Name | Names], Dir) ->
+    File = filename:absname(Name, Dir),
+    case filelib:is_regular(File) of
+        'true' ->
+            File;
+        _ ->
+            config_file(Names, Dir)
+    end;
+config_file([], _) ->
+    'false'.
 
 -spec dep_erl_opts(
         Deps    :: [brt:app_name() | brt:dep_spec()],
         Opts    :: [atom() | tuple()],
         Conf    :: [{brt:app_name(), [atom() | tuple()]}])
-        -> [atom() | tuple()] | no_return().
+        -> [atom() | tuple()].
 
 dep_erl_opts([AppName | Deps], Opts, Conf) when ?is_app_name(AppName) ->
     case brt:get_key_list(AppName, Conf) of
@@ -267,7 +344,7 @@ dep_erl_opts([], Opts, _) ->
         Plugins :: [brt:dep_spec()],
         Conf    :: [{brt:app_name(), [brt:app_name()]}],
         Raw     :: [brt:app_name()])
-        -> [brt:dep_spec()] | no_return().
+        -> [brt:dep_spec()].
 
 dep_plugins([AppName | Deps], Plugins, Conf, Raw) when ?is_app_name(AppName) ->
     AppConf = brt:get_key_list(AppName, Conf),
@@ -352,32 +429,29 @@ get_pkg_version(Config, Package) ->
             Vsn
     end.
 
--spec init(
-        Dirs :: [brt:fs_path()], FileName :: brt:fs_path(), Defaults :: list())
-        -> 'ok' | brt:err_result() | no_return().
+-spec init(Dirs :: [brt:fs_path()], Defaults :: list())
+        -> 'ok' | brt:err_result().
 
-init([Dir | Dirs], FileName, Defaults) ->
-    FilePath = filename:absname(FileName, Dir),
-    case filelib:is_file(FilePath) of
-        'true' ->
-            case file:consult(FilePath) of
+init([Dir | Dirs], Defaults) ->
+    case config_file(Dir) of
+        'false' ->
+            init(Dirs, Defaults);
+        File ->
+            case file:consult(File) of
                 {'ok', Config} ->
-                    ?SET_CONFIG_FILE(FilePath),
-                    ?SET_CONFIG_TERMS(merge(Defaults, Config)),
+                    ?CONFIG_FILE(File),
+                    ?CONFIG_TERMS(merge(Defaults, Config)),
                     'ok';
                 {'error', What} ->
-                    brt:file_error(FilePath, What)
-            end;
-        _ ->
-            init(Dirs, FileName, Defaults)
+                    brt:file_error(File, What)
+            end
     end;
 
-init([], _, Defaults) ->
-    ?SET_CONFIG_TERMS(Defaults),
+init([], Defaults) ->
+    ?CONFIG_TERMS(Defaults),
     'ok'.
 
--spec merge(Defaults :: config(), Config :: config())
-        -> config() | no_return().
+-spec merge(Defaults :: config(), Config :: config()) -> config().
 
 merge(Defaults, Config) ->
     Nested  = brt:get_key_list('nested_merge_sects', Defaults),

@@ -18,106 +18,180 @@
 %%
 %% -------------------------------------------------------------------
 
--module(brt_make).
+%%
+%% @doc BRT provider for the 'brt-mk' command.
+%%
+-module(brt_prv_mk).
 
-% API
--export([
-    create_makefile/5,
-    update_makefile/5
-]).
+%% provider behavior
+-ifndef(brt_validate).
+-behaviour(brt).
+-endif.
+-export([do/1, format_error/1, init/1]).
 
 -include("brt.hrl").
 
+-define(PROVIDER_ATOM,  'brt-mk').
+-define(PROVIDER_STR,   "brt-mk").
+-define(PROVIDER_DEPS,  ['compile']).
+-define(PROVIDER_OPTS,  [
+    {'recurse', $r, "recurse", 'boolean',
+        "Apply the operation to ALL dependencies, recursively."},
+    {'checkouts', $c, "checkouts", 'boolean',
+        "When operating recursively (-r|--recursive), restrict changes to "
+        "the current project and its checkouts directory."},
+    {'loose', $l, "loose", 'boolean',
+        "Issue a warning, instead of an error, if a Makefile is encountered "
+        "with an ambiguous or non-Basho copyright. "
+        "The file is written with its original or a current-year Basho "
+        "copyright (based on how ambiguous it is) and MUST be reviewed "
+        "before being committed."},
+    {'name', $n, "name", 'string',
+        "Prepend <name> to the candidate makefile names. "
+        "By default, the only candidate is \"Makefile\". "
+        "When writing, the outpust is always to the first filename in the "
+        "candidate list, whether it exists or not. "
+        "When reading, the list is traversed until an existing file is "
+        "found, and if no such file exists defaults are used. "
+        "This behavior allows writing an updated version of a file with a new "
+        "name, leaving the original intact."}
+]).
+
 %% ===================================================================
-%% API
+%% Behavior
 %% ===================================================================
 
--spec create_makefile(
-        AppName     :: brt:app_name(),
-        AppDir      :: brt:fs_path(),
-        DepsDir     :: brt:fs_path(),
-        Makefile    :: brt:fs_path(),
-        Overwrite   :: boolean())
-        -> 'ok' | brt:err_result() | no_return().
+-spec init(State :: brt:rebar_state()) -> {'ok', brt:rebar_state()}.
 %%
-%% @doc Writes the Makefile for the specified Package.
+%% @doc Adds the command provider to rebar's state.
 %%
-%% Xref or defaults errors are reported before the target Makefile is touched.
+init(State) ->
+    Provider = providers:create([
+        {'name',        ?PROVIDER_ATOM},
+        {'module',      ?MODULE},
+        {'bare',        'true'},
+        {'deps',        ?PROVIDER_DEPS},
+        {'example',     "rebar3 " ?PROVIDER_STR},
+        {'short_desc',  short_desc()},
+        {'desc',        long_desc()},
+        {'opts',        ?PROVIDER_OPTS}
+    ]),
+    {'ok', rebar_state:add_provider(State, Provider)}.
+
+-spec do(State :: brt:rebar_state())
+        -> {'ok', brt:rebar_state()} | brt:prv_error().
 %%
-create_makefile(AppName, AppDir, DepsDir, Makefile, Overwrite) ->
-    case brt_xref:app_deps(AppName, AppDir, DepsDir) of
-        {'error', _} = XRefErr ->
-            XRefErr;
-        {'ok', ProdApps, TestApps} ->
-            Content = brt_defaults:makefile(ProdApps, TestApps),
-            OpenOpts = case Overwrite of
-                'true' ->
-                    ['write'];
-                'false' ->
-                    ['write', 'exclusive']
+%% @doc Execute the provider command logic.
+%%
+do(State) ->
+    {Opts, _} = rebar_state:command_parsed_args(State),
+    handle_command(Opts, State).
+
+-spec format_error(Error :: term()) -> iolist().
+%%
+%% @doc Format errors for display.
+%%
+format_error(Error) ->
+    brt:format_error(Error).
+
+%%====================================================================
+%% Help Text
+%%====================================================================
+
+-spec short_desc() -> nonempty_string().
+short_desc() ->
+    "Create or update project Makefile(s).".
+
+-spec long_desc() -> nonempty_string().
+long_desc() ->
+    "Creates or OVERWRITES one or more Makefiles.\n"
+    "\n"
+    "When updating an existing file, especially in a forked repository, "
+    "the span of the generated copyright should be sanity checked, as the "
+    "earliest commit of the file is used as the start of the copyright year "
+    "range when a pre-existing copyright header is not present.\n".
+
+%%====================================================================
+%% Internal
+%%====================================================================
+
+-type context() ::  {brt_xref:xref(), boolean(), [brt:fs_path()]}.
+
+-spec handle_command(
+        Opts :: [proplists:property()], State :: brt:rebar_state())
+        -> {'ok', brt:rebar_state()} | brt:prv_error().
+handle_command(Opts, State) ->
+    case brt_xref:new(State) of
+        {'ok', XRef} ->
+            FileNames = case proplists:get_value('name', Opts, "Makefile") of
+                "Makefile" ->
+                    ["Makefile"];
+                File ->
+                    [File, "Makefile"]
             end,
-            case file:open(Makefile, OpenOpts) of
-                {'ok', IoDev} ->
-                    try
-                        brt_io:write_makefile(IoDev, Content, 'current')
-                    after
-                        file:close(IoDev)
+            Loose   = proplists:get_value('loose', Opts, 'false'),
+            Context = {XRef, Loose, FileNames},
+            Select  = case proplists:get_value('recurse', Opts) of
+                'true' ->
+                    case proplists:get_value('checkouts', Opts) of
+                        'true' ->
+                            fun brt_rebar:in_prj_or_checkouts/2;
+                        _ ->
+                            'all'
                     end;
-                {'error', What} ->
-                    brt:file_error(Makefile, What)
-            end
+                _ ->
+                    brt_rebar:prj_app_specs(State)
+            end,
+            Result = brt_rebar:fold(Select, fun update/3, Context, State),
+            brt_xref:stop(XRef),
+            case Result of
+                {'ok', _} ->
+                    {'ok', State};
+                Err ->
+                    Err
+            end;
+        Error ->
+            Error
     end.
 
--spec update_makefile(
-        AppName     :: brt:app_name(),
-        AppDir      :: brt:fs_path(),
-        DepsDir     :: brt:fs_path(),
-        Makefile    :: brt:fs_path(),
-        MustExist   :: boolean())
-        -> 'ok' | brt:err_result() | no_return().
-%%
-%% @doc Updates the Makefile for the specified Package.
-%%
-%% Xref or defaults errors are reported before the target Makefile is touched.
-%%
-update_makefile(AppName, AppDir, DepsDir, Makefile, MustExist) ->
-    case brt_xref:app_deps(AppName, AppDir, DepsDir) of
-        {'error', _} = XRefErr ->
-            XRefErr;
-        {'ok', ProdApps, TestApps} ->
-            Content = brt_defaults:makefile(ProdApps, TestApps),
-            YearOrError = case brt_io:copyright_info(Makefile, 'sh') of
-                {'basho', CpyYear} ->
-                    CpyYear;
-                {'error', 'enoent'} = FileErr ->
-                    case MustExist of
-                        'true' ->
-                            FileErr;
-                        _ ->
-                            'current'
-                    end;
-                'none' ->
-                    brt_repo:added_year(Makefile, 'current');
-                'other' ->
-                    {'error', {'brt', 'copyright_dirty'}};
-                {'error', _} = FileErr ->
-                    FileErr
+-spec update(
+        App     :: brt:app_spec(),
+        Context :: context(),
+        State   :: brt:rebar_state())
+        -> {'ok', context()} | brt:prv_error().
+
+update({Name, Path, _} = App, {XRef, Loose, FileNames} = Context, _State) ->
+    rebar_api:debug("~s:update/3: App = ~p", [?MODULE, App]),
+    case brt_xref:app_deps(XRef, Name) of
+        {'ok', Deps} ->
+            Content = brt_defaults:makefile(
+                Deps, brt_fudge:test_deps(Path) -- Deps),
+            FileOut = filename:absname(erlang:hd(FileNames), Path),
+            FileIn  = case brt:find_first('file', FileNames, [Path]) of
+                'false' ->
+                    FileOut;
+                File ->
+                    File
             end,
-            case YearOrError of
-                {'error', What} when erlang:is_atom(What) ->
-                    brt:file_error(Makefile, What);
+            case brt_rebar:copyright_info(FileIn, Loose, 'sh') of
                 {'error', _} = Error ->
                     Error;
-                Year ->
-                    case file:open(Makefile, ['write']) of
+                CpyInfo ->
+                    case file:open(FileOut, ['write']) of
                         {'ok', IoDev} ->
-                            try
-                                brt_io:write_makefile(IoDev, Content, Year)
-                            after
-                                file:close(IoDev)
+                            Result = brt_io:write_makefile(
+                                IoDev, Content, CpyInfo),
+                            _ = file:close(IoDev),
+                            case Result of
+                                'ok' ->
+                                    {'ok', Context};
+                                _ ->
+                                    Result
                             end;
                         {'error', What} ->
-                            brt:file_error(Makefile, What)
+                            brt:file_error(FileOut, What)
                     end
-            end
+            end;
+        Error ->
+            Error
     end.
