@@ -705,7 +705,6 @@ write_rebar_config_terms(IoDev, Indent, [{Section, Profiles} | Terms])
     end;
 
 write_rebar_config_terms(IoDev, Indent, [Term | Terms]) ->
-    io:format("~s:~b: IoList = \"~s\"~n", [?MODULE, ?LINE, [Indent, format_value(Indent, Term)]]),
     io:put_chars(IoDev, [Indent, format_value(Indent, Term)]),
     close_term(IoDev, Indent, Terms),
     write_rebar_config_terms(IoDev, Indent, Terms);

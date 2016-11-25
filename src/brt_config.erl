@@ -109,6 +109,7 @@ dep_erl_opts(Deps, Opts) ->
 %%
 %% This is pretty shaky, as the makefile contents are entirely unstructured.
 %%
+%% @end
 %
 % Right now, this is a no-op, and without some more structured approach, it's
 % probably best to keep it that way.

@@ -4,17 +4,24 @@ Basho Rebar Tools (BRT) adds commands to [Rebar3][rebar3] supporting Basho's dev
 
 ##WARNING
 
-This is very much a ***WORK IN PROGRESS*** - docs are missing or wrong, code may or may not do what it's supposed to, and pretty much everything is subject to change.
-Something that kinda sorta works may exist on the `develop` branch.
-If you want to try some things out, you're advised to talk to Ted first.
+This is very much a ***WORK IN PROGRESS!***
+
+Whatever you find on the `master` branch should be relatively stable.
+
+Something that kinda sorta works may exist on the `develop` branch, but if you want to play with it you're advised to talk to Ted first.
 
 ##What It Does
 
 The current focus is on generating and verifying true dependencies.
 
-There's functionality to create/update cooperating `Makefile` and `rebar.config` files.
+There's functionality to:
+* Create/update cooperating `Makefile` and `rebar.config` files.
+* List true dependencies.
+* Check true versus configured dependencies.
+* Read and write Rebar2 rebar.config elements.
 
 There's also fairly robust `git` manipulation capability, but it needs a command strategy for exposing it as rebar commands.
+Specifically, just because we _can_ automate a bunch of repository manipulation operations, that doesn't make it a good idea.
 
 ##How to Use It
 
@@ -32,14 +39,17 @@ The following addition to `rebar.config` makes the plugin available for use:
 
 ###Commands
 
-Whatever's enabled through the rebar command structure will show up in `rebar3 help` as commands named `brt-<something>`. The command `rebar3 help brt-<something>` provides _at least_ a brief description of the command and a listing of its options.
+Whatever's enabled through the rebar command structure will show up in `rebar3 help` as commands named `brt-<something>`.
+
+The command `rebar3 help brt-<something>` provides a description of the command and its options.
 
 ###Configuration
 
 By default, the plugin looks for its configuration in a file named `brt.config` in the current working directory, though it can be made to look elsewhere or for a different file name by setting the `BRT_CONFIG` environment variable.
 
 The command `rebar3 brt-info` displays the effective configuration.
-Until I get around to documenting it, read the comments in the `priv/default.brt.config` file to see what you can adjust.
+
+Until I get around to documenting it, read the comments in [default.brt.config](priv/default.brt.config) to see what you can adjust.
 
 ##License
 

@@ -315,7 +315,7 @@ find_git() ->
 check_git([_|_] = Exe) ->
     try
         Port = erlang:open_port({'spawn_executable', Exe}, [
-            {'args', "--version"}, {'env',  []}, {'line', 1024},
+            {'args', ["--version"]}, {'env', []}, {'line', 1024},
             'exit_status', 'stderr_to_stdout', 'hide', 'eof']),
         try handle_port(Port, []) of
             {'ok', ["git version 1." ++ _]} ->

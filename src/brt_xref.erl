@@ -53,7 +53,8 @@
 -type addable() ::  brt:app_spec() | app_dir() | lib_dir().
 -type app_dir() ::  brt:fs_path().
 -type lib_dir() ::  {brt:fs_path()}.
--type xref()    ::  #brt_xref{}.
+
+-opaque xref()  ::  #brt_xref{}.
 
 -type xref_error()  ::  {'error', module(), term()}.
 
@@ -71,9 +72,14 @@
 %%
 %% Input list elements are each one of:
 %%
-%%   {AppName, AppDir}  = The name and output path of an application.
-%%   {LibDir}           = A directory containing application directories.
-%%   AppDir             = An application directory.
+%%  `{AppName, AppDir, AppOutDir}'
+%%      The name and output path of an application.
+%%
+%%  `{LibDir}'
+%%      A directory containing application directories.
+%%
+%%  `AppDir'
+%%      An application directory.
 %%
 add(#brt_xref{xref = X, apps = Apps} = XRef, [{Name, _, Path} = App | Adds]) ->
     case not lists:keymember(Name, 1, Apps) andalso brt:is_app_dir(Path) of
@@ -124,7 +130,7 @@ add(XRef, Addable) ->
 %%
 %% @doc Returns the name/path tuple for the specified application, if found.
 %%
-%% Returns 'false' if the application has not been added to the xref server.
+%% Returns `false' if the application has not been added to the xref server.
 %%
 app(#brt_xref{apps = Apps}, AppName) ->
     lists:keyfind(brt:to_atom(AppName), 1, Apps).
@@ -169,7 +175,7 @@ dep_apps(XRef, App) ->
 %% @doc Starts an XRef server and loads it from the provided input.
 %%
 %% When the input is a list, it is handled according to the rules for input to
-%% the add/2 function.
+%% the {@link add/2} function.
 %%
 %% An empty server can be started by providing an empty input list.
 %%
