@@ -33,7 +33,7 @@
 
 -define(PROVIDER_ATOM,  'brt-dump').
 -define(PROVIDER_STR,   "brt-dump").
--define(PROVIDER_DEPS,  []).
+-define(PROVIDER_DEPS,  ['lock']).
 -define(PROVIDER_OPTS,  []).
 
 % Dialyzer doesn't want us peeking inside opaque types, but we want to give
