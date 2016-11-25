@@ -27,7 +27,7 @@
 -ifndef(brt_validate).
 -behaviour(brt).
 -endif.
--export([do/1, format_error/1, init/1]).
+-export([do/1, format_error/1, init/1, spec/0]).
 
 -include("brt.hrl").
 
@@ -45,16 +45,7 @@
 %% @doc Adds the command provider to rebar's state.
 %%
 init(State) ->
-    Provider = providers:create([
-        {'name',        ?PROVIDER_ATOM},
-        {'module',      ?MODULE},
-        {'bare',        'true'},
-        {'deps',        ?PROVIDER_DEPS},
-        {'example',     "rebar3 " ?PROVIDER_STR},
-        {'short_desc',  short_desc()},
-        {'desc',        long_desc()},
-        {'opts',        ?PROVIDER_OPTS}
-    ]),
+    Provider = providers:create(spec()),
     {'ok', rebar_state:add_provider(State, Provider)}.
 
 -spec do(State :: brt:rebar_state()) -> {'ok', brt:rebar_state()}.
@@ -70,6 +61,22 @@ do(State) ->
 %%
 format_error(Error) ->
     brt:format_error(Error).
+
+-spec spec() -> [{atom(), term()}].
+%%
+%% @doc Return the proplist that will be supplied to providers:create/1.
+%%
+spec() ->
+    [
+        {'name',        ?PROVIDER_ATOM},
+        {'module',      ?MODULE},
+        {'bare',        'true'},
+        {'deps',        ?PROVIDER_DEPS},
+        {'example',     "rebar3 " ?PROVIDER_STR},
+        {'short_desc',  short_desc()},
+        {'desc',        long_desc()},
+        {'opts',        ?PROVIDER_OPTS}
+    ].
 
 %%====================================================================
 %% Internal

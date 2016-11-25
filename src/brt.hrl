@@ -71,6 +71,35 @@
 -define(BASHO_YEAR_MIN, 2007).
 
 %
+% Common provider options.
+%
+-define(BRT_CHECKOUTS_OPT,
+    {'checkouts', $c, "checkouts", 'boolean',
+        "When operating recursively (-r|--recursive), restrict operations to "
+        "the current project and its checkouts directory."}
+).
+-define(BRT_LOOSE_OPT,
+    {'loose', $l, "loose", 'boolean',
+        "Issue a warning, instead of an error, if the input file has an "
+        "ambiguous or non-Basho copyright. "
+        "The output file is [over]written with the input's original or a "
+        "current-year Basho copyright (based on how ambiguous it is) and "
+        "MUST be reviewed before being committed."}
+).
+-define(BRT_RECURSIVE_OPT,
+    {'recurse', $r, "recurse", 'boolean',
+        "Apply the operation to all (true) dependencies, recursively."}
+).
+-define(BRT_VERBOSITY_OPTS,
+    {'quiet', $q, "quiet", 'boolean',
+        "Restrict output to errors, "
+        "effective only after the plugin is loaded."},
+    {'warn', $w, "warn", 'boolean',
+        "Restrict output to warnings and errors, "
+        "effective only after the plugin is loaded."}
+).
+
+%
 % For debugging ONLY!
 %
 -define(BRT_VAR(Var),   io:format(

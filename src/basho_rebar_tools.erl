@@ -42,13 +42,14 @@
 %%
 %% This provider performs no actions itself.
 %%
-init(State) ->
-    case provider_modules(State) of
+init(StateIn) ->
+    case provider_modules(StateIn) of
         [] ->
-            {'ok', State};
+            {'ok', StateIn};
         Mods ->
-            % There's no application at this point, so don't try to get its
-            % directory - it will be 'undefined'.
+            {'ok', State} = init_prov_env(Mods, StateIn),
+            % There's no application at this point, so don't try to
+            % get its directory - it will be 'undefined'.
             case brt_config:init([rebar_state:dir(State)]) of
                 'ok' ->
                     init_providers(Mods, {'ok', State});
@@ -73,14 +74,55 @@ do(State) ->
 %% This provider performs no actions itself.
 %%
 format_error(Error) ->
-    io_lib:format("~p", [Error]).
+    brt:format_error(Error).
 
 %%====================================================================
 %% Internal
 %%====================================================================
 
--spec init_providers(Mods :: [module()], State :: {'ok', brt:rebar_state()})
+-spec command_mod_spec(Cmd :: atom() | string(), Mods :: [module()])
+        -> {atom(), module(), brt:prv_spec()} | 'false'.
+%
+% Find the module and provider spec for the specified command.
+%
+command_mod_spec(Cmd, Mods) when not erlang:is_atom(Cmd) ->
+    command_mod_spec(brt:to_atom(Cmd), Mods);
+command_mod_spec(Cmd, [Mod | Mods]) ->
+    Spec = Mod:spec(),
+    case brt:get_key_value('name', Spec) of
+        Cmd ->
+            {Cmd, Mod, Spec};
+        _ ->
+            command_mod_spec(Cmd, Mods)
+    end;
+command_mod_spec(_, []) ->
+    'false'.
+
+-spec init_prov_env(Mods :: [module()], State :: brt:rebar_state())
         -> {'ok', brt:rebar_state()}.
+%
+% The Rebar state's 'command_args' element hasn't been populated at this point,
+% so we have to prowl around a bit depending on how Rebar was invoked.
+%
+init_prov_env(Mods, State) ->
+    Caller = rebar_state:get(State, 'caller'),
+    [CmdIn | Args] = case Caller of
+        'command_line' ->
+            % first element is the escript path
+            erlang:tl(init:get_plain_arguments());
+        _ ->
+            rebar_state:get(State, 'task')
+    end,
+    case command_mod_spec(CmdIn, Mods) of
+        {_Cmd, _Mod, Spec} ->
+            maybe_adjust_log_level(Spec, Args, Caller),
+            {'ok', State};
+        'false' ->
+            {'ok', State}
+    end.
+
+-spec init_providers(Mods :: [module()], State :: {'ok', brt:rebar_state()})
+        -> {'ok', brt:rebar_state()} | brt:err_result().
 %
 % Initialize the command providers.
 % Yes, this could be done with lists:foldl/3, but doing it explicitly here is
@@ -89,8 +131,43 @@ format_error(Error) ->
 %
 init_providers([Mod | Mods], {'ok', State}) ->
     init_providers(Mods, Mod:init(State));
-init_providers([], Result) ->
+init_providers(_, Result) ->
     Result.
+
+-spec maybe_adjust_log_level(
+        Spec :: brt:prv_spec(), Args :: [string()], Caller :: atom())
+        -> 'ok'.
+%
+% If the 'quiet command line switch was given to a BRT command ensure the
+% log level is no higher than 'error'.
+% If the 'warn' command line switch was given to a BRT command ensure the
+% log level is no higher than 'warn'.
+%
+maybe_adjust_log_level(Spec, Args, Caller) ->
+    case getopt:parse(brt:get_key_list('opts', Spec), Args) of
+        {'ok', {Opts, _}} ->
+            CurLevel = rebar_log:get_level(),
+            MaxLevel = case proplists:get_value('quiet', Opts, 'false') of
+                'true' ->
+                    rebar_log:error_level();
+                _ ->
+                    case proplists:get_value('warn', Opts, 'false') of
+                        'true' ->
+                            (rebar_log:error_level() + 1);
+                        _ ->
+                            CurLevel
+                    end
+            end,
+            case MaxLevel < CurLevel of
+                'true' ->
+                    rebar_log:init(Caller, MaxLevel),
+                    'ok';
+                _ ->
+                    'ok'
+            end;
+        _ ->
+            'ok'
+    end.
 
 -spec provider_modules(State :: brt:rebar_state()) -> [module()].
 %

@@ -27,7 +27,7 @@
 -ifndef(brt_validate).
 -behaviour(brt).
 -endif.
--export([do/1, format_error/1, init/1]).
+-export([do/1, format_error/1, init/1, spec/0]).
 
 -include("brt.hrl").
 
@@ -39,17 +39,9 @@
         "Only update the target file's global 'deps' section. NOTE that even "
         "with a partial update any comments in the file will be lost, as it "
         "is read and written as Erlang terms."},
-    {'recurse', $r, "recurse", 'boolean',
-        "Apply the operation to all (true) dependencies, recursively."},
-    {'checkouts', $c, "checkouts", 'boolean',
-        "When operating recursively (-r|--recursive), restrict changes to "
-        "the current project and its checkouts directory."},
-    {'loose', $l, "loose", 'boolean',
-        "Issue a warning, instead of an error, if a rebar.config file is "
-        "encountered with an ambiguous or non-Basho copyright. "
-        "The file is written with its original or a current-year Basho "
-        "copyright (based on how ambiguous it is) and MUST be reviewed "
-        "before being committed."},
+    ?BRT_RECURSIVE_OPT,
+    ?BRT_CHECKOUTS_OPT,
+    ?BRT_LOOSE_OPT,
     {'name', $n, "name", 'string',
         "Prepend <name> to the candidate rebar.config file names. "
         "By default, candidates are $REBAR_CONFIG (if it's set) followed by "
@@ -61,7 +53,8 @@
         "This behavior allows writing an updated version of a file with a new "
         "name, leaving the original intact."},
     {'rebar2', $2, "rebar2", 'boolean',
-        "Write rebar.config elements in Rebar2 format."}
+        "Write rebar.config elements in Rebar2 format."},
+    ?BRT_VERBOSITY_OPTS
 ]).
 
 %% ===================================================================
@@ -73,16 +66,7 @@
 %% @doc Adds the command provider to rebar's state.
 %%
 init(State) ->
-    Provider = providers:create([
-        {'name',        ?PROVIDER_ATOM},
-        {'module',      ?MODULE},
-        {'bare',        'true'},
-        {'deps',        ?PROVIDER_DEPS},
-        {'example',     "rebar3 " ?PROVIDER_STR},
-        {'short_desc',  short_desc()},
-        {'desc',        long_desc()},
-        {'opts',        ?PROVIDER_OPTS}
-    ]),
+    Provider = providers:create(spec()),
     {'ok', rebar_state:add_provider(State, Provider)}.
 
 -spec do(State :: brt:rebar_state())
@@ -128,6 +112,22 @@ do(State) ->
 %%
 format_error(Error) ->
     brt:format_error(Error).
+
+-spec spec() -> [{atom(), term()}].
+%%
+%% @doc Return the proplist that will be supplied to providers:create/1.
+%%
+spec() ->
+    [
+        {'name',        ?PROVIDER_ATOM},
+        {'module',      ?MODULE},
+        {'bare',        'true'},
+        {'deps',        ?PROVIDER_DEPS},
+        {'example',     "rebar3 " ?PROVIDER_STR},
+        {'short_desc',  short_desc()},
+        {'desc',        long_desc()},
+        {'opts',        ?PROVIDER_OPTS}
+    ].
 
 %%====================================================================
 %% Help Text

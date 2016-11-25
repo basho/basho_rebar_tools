@@ -65,6 +65,7 @@
     file_mode/0,
     fs_path/0,
     prv_error/0,
+    prv_spec/0,
     rebar_app/0,
     rebar_conf/0,
     rebar_key/0,
@@ -101,6 +102,7 @@
 -type err_result()  ::  {'error', term()}.
 -type fs_path()     ::  nonempty_string().
 -type prv_error()   ::  {'error', string()} | {'error', {module(), term()}}.
+-type prv_spec()    ::  [{atom(), term()}].
 -type rebar_conf()  ::  [rebar_sect()].
 -type rebar_key()   ::  atom().
 -type rebar_sect()  ::  {rebar_key(), term()}.
@@ -121,6 +123,7 @@
 -callback do(rebar_state()) -> {ok, rebar_state()} | prv_error().
 -callback format_error(term()) -> iolist().
 -callback init(rebar_state()) -> {ok, rebar_state()}.
+-callback spec() -> prv_spec().
 
 -spec implements_behaviour(Module :: module()) -> boolean().
 %%
@@ -133,7 +136,7 @@ implements_behaviour(Module) ->
                 fun({Function, Arity}) ->
                     erlang:function_exported(Module, Function, Arity)
                 end,
-                [{'do', 1}, {'format_error', 1}, {'init', 1}]);
+                [{'do', 1}, {'format_error', 1}, {'init', 1}, {'spec', 0}]);
         _ ->
             'false'
     end.
