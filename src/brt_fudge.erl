@@ -83,6 +83,8 @@ test_deps(State) when ?is_rebar_state(State) ->
         [rebar_app_info:name(AI) || AI <- rebar_state:project_apps(State)],
         rebar_state:dir(State)).
 
+-spec test_deps(Names :: [atom() | binary()], Path :: brt:fs_path())
+        -> [brt:app_name()].
 test_deps(['cuttlefish' | _], _) ->
     [];
 test_deps([Name | Names], Path) ->

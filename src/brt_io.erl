@@ -477,7 +477,7 @@ comment_line_start_re(Arg) ->
     erlang:error('badarg', [Arg]).
 
 -spec parse_copyright(
-        IoDev :: io:device(), ReInfo ::{comment_type(), string()})
+        IoDev :: io:device(), ReInfo :: {comment_type(), string()})
         ->  'none' | 'other' | {'basho', brt:year1970()} | brt:err_result().
 %
 % Results as specified for copyright_info/2.This function is tightly integrated

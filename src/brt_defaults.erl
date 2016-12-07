@@ -31,7 +31,7 @@
     file_data/1,
     file_terms/1,
     makefile/2,
-    rebar_config/3
+    rebar_config/4
 ]).
 
 -include("brt.hrl").
@@ -148,6 +148,7 @@ makefile(ProdDeps, TestDeps) ->
         unicode:characters_to_list(file_data("basho.mk"), 'utf8')).
 
 -spec rebar_config(
+        AppName     :: brt:app_name(),
         ProdDeps    :: [brt:app_name() | brt:dep_spec()],
         TestDeps    :: [brt:app_name() | brt:dep_spec()],
         PluginDeps  :: [brt:app_name() | brt:dep_spec()])
@@ -165,8 +166,17 @@ makefile(ProdDeps, TestDeps) ->
 %%
 %% @see makefile/2
 %%
-rebar_config(ProdDeps, TestDeps, PluginDeps) ->
-    DFTerms = file_terms("rebar.config"),
+rebar_config(AppName, ProdDeps, TestDeps, PluginDeps) ->
+    DefTerms = file_terms("rebar.config"),
+    BrtTerms = case brt:get_key_tuple(AppName,
+            brt:get_key_list('upstream', brt_config:config())) of
+        {_, URL} ->
+            BRT = lists:keystore('upstream', 1,
+                brt:get_key_list('brt', DefTerms), {'upstream', URL}),
+            lists:keystore('brt', 1, DefTerms, {'brt', BRT});
+        _ ->
+            DefTerms
+    end,
     %
     % Prior to Rebar3 there are no profiles, so there's no opportunity to
     % override the 'no_debug_info' pseudo option.
@@ -174,16 +184,16 @@ rebar_config(ProdDeps, TestDeps, PluginDeps) ->
     %
     Default = case brt_rebar:config_format() < 3 of
         'true' ->
-            Opts  = brt:get_key_list('erl_opts', DFTerms),
+            Opts  = brt:get_key_list('erl_opts', BrtTerms),
             case lists:member('no_debug_info', Opts) of
                 'true' ->
-                    lists:keyreplace('erl_opts', 1, DFTerms, {'erl_opts',
+                    lists:keyreplace('erl_opts', 1, BrtTerms, {'erl_opts',
                         lists:delete('no_debug_info', lists:usort(Opts))});
                 _ ->
-                    DFTerms
+                    BrtTerms
             end;
         _ ->
-            DFTerms
+            BrtTerms
     end,
     AppDeps = lists:foldl(
         fun(AAppOrDep, AResult) ->
@@ -216,48 +226,6 @@ rebar_config(ProdDeps, TestDeps, PluginDeps) ->
     Config2 = lists:keystore('plugins', 1, Config1, {'plugins', Plugins}),
     Config3 = lists:keystore('erl_opts', 1, Config2, {'erl_opts', ErlOpts}),
     lists:keystore('deps', 1, Config3, {'deps', lists:sort(AppDeps)}).
-
-update_profiles(Config, ProdDeps, TestDeps, PluginDeps) ->
-    ProfIn  = brt:get_key_list('profiles', Config),
-    ProfOut = update_profiles(
-        ProfIn, Config, ProdDeps, TestDeps, PluginDeps, []),
-    lists:keystore('profiles', 1, Config, {'profiles', ProfOut}).
-
-update_profiles(
-        [{'check' = Sect, Terms0} | Sects],
-        Config, ProdDeps, TestDeps, PluginDeps, Result) ->
-    Over0   = brt:get_key_list('overrides', Terms0),
-    Over1   = [{'add', Pkg, [{'erl_opts', ['debug_info']}]}
-                || Pkg <- lists:map(fun brt:dep_name/1, ProdDeps)],
-    Over2   = lists:usort(Over0 ++ Over1),
-    Terms1  = lists:keystore('overrides', 1, Terms0, {'overrides', Over2}),
-    Update  = {Sect, lists:keysort(1, Terms1)},
-    update_profiles(
-        Sects, Config, ProdDeps, TestDeps, PluginDeps, [Update | Result]);
-
-update_profiles(
-        [{'test' = Sect, Terms0} | Sects],
-        Config, ProdDeps, TestDeps, PluginDeps, Result) ->
-    Deps0   = brt:get_key_list('deps', Terms0),
-    Deps1   = lists:keymerge(1, lists:sort(Deps0), lists:sort(TestDeps)),
-    Terms1  = lists:keystore('deps', 1, Terms0, {'deps', Deps1}),
-    Opts0   = brt:get_key_list('erl_opts', Terms1),
-    Opts1   = brt_config:dep_erl_opts(TestDeps, Opts0),
-    Opts2   = lists:subtract(Opts1, brt:get_key_list('erl_opts', Config)),
-    Terms2  = lists:keystore('erl_opts', 1, Terms1, {'erl_opts', Opts2}),
-    Update  = {Sect, lists:keysort(1, Terms2)},
-    update_profiles(
-        Sects, Config, ProdDeps, TestDeps, PluginDeps, [Update | Result]);
-
-update_profiles(
-        [{Sect, Terms} | Sects],
-        Config, ProdDeps, TestDeps, PluginDeps, Result) ->
-    Update  = {Sect, lists:keysort(1, Terms)},
-    update_profiles(
-        Sects, Config, ProdDeps, TestDeps, PluginDeps, [Update | Result]);
-
-update_profiles([], _, _, _, _, Result) ->
-    lists:keysort(1, Result).
 
 %% ===================================================================
 %% Internal
@@ -309,3 +277,62 @@ make_copyright(Prefix, Years) ->
         'divider'
     ],
     [comment_line(Prefix, Line) || Line <- Lines].
+
+-spec update_profiles(
+        Config      :: brt:rebar_conf(),
+        ProdDeps    :: [brt:app_name() | brt:dep_spec()],
+        TestDeps    :: [brt:app_name() | brt:dep_spec()],
+        PluginDeps  :: [brt:app_name() | brt:dep_spec()])
+        -> brt:rebar_conf().
+
+update_profiles(Config, ProdDeps, TestDeps, PluginDeps) ->
+    ProfIn  = brt:get_key_list('profiles', Config),
+    ProfOut = update_profiles(
+        ProfIn, Config, ProdDeps, TestDeps, PluginDeps, []),
+    lists:keystore('profiles', 1, Config, {'profiles', ProfOut}).
+
+-spec update_profiles(
+        Sects       :: [brt:rebar_sect()],
+        Config      :: brt:rebar_conf(),
+        ProdDeps    :: [brt:app_name() | brt:dep_spec()],
+        TestDeps    :: [brt:app_name() | brt:dep_spec()],
+        PluginDeps  :: [brt:app_name() | brt:dep_spec()],
+        Result      :: [brt:rebar_sect()])
+        -> [brt:rebar_sect()].
+
+update_profiles(
+        [{'check' = Sect, Terms0} | Sects],
+        Config, ProdDeps, TestDeps, PluginDeps, Result) ->
+    Over0   = brt:get_key_list('overrides', Terms0),
+    Over1   = [{'add', Pkg, [{'erl_opts', ['debug_info']}]}
+        || Pkg <- lists:map(fun brt:dep_name/1, ProdDeps)],
+    Over2   = lists:usort(Over0 ++ Over1),
+    Terms1  = lists:keystore('overrides', 1, Terms0, {'overrides', Over2}),
+    Update  = {Sect, lists:keysort(1, Terms1)},
+    update_profiles(
+        Sects, Config, ProdDeps, TestDeps, PluginDeps, [Update | Result]);
+
+update_profiles(
+        [{'test' = Sect, Terms0} | Sects],
+        Config, ProdDeps, TestDeps, PluginDeps, Result) ->
+    Deps0   = brt:get_key_list('deps', Terms0),
+    Deps1   = lists:keymerge(1, lists:sort(Deps0), lists:sort(TestDeps)),
+    Terms1  = lists:keystore('deps', 1, Terms0, {'deps', Deps1}),
+    Opts0   = brt:get_key_list('erl_opts', Terms1),
+    Opts1   = brt_config:dep_erl_opts(TestDeps, Opts0),
+    Opts2   = lists:subtract(Opts1, brt:get_key_list('erl_opts', Config)),
+    Terms2  = lists:keystore('erl_opts', 1, Terms1, {'erl_opts', Opts2}),
+    Update  = {Sect, lists:keysort(1, Terms2)},
+    update_profiles(
+        Sects, Config, ProdDeps, TestDeps, PluginDeps, [Update | Result]);
+
+update_profiles(
+        [{Sect, Terms} | Sects],
+        Config, ProdDeps, TestDeps, PluginDeps, Result) ->
+    Update  = {Sect, lists:keysort(1, Terms)},
+    update_profiles(
+        Sects, Config, ProdDeps, TestDeps, PluginDeps, [Update | Result]);
+
+update_profiles([], _, _, _, _, Result) ->
+    lists:keysort(1, Result).
+

@@ -26,6 +26,7 @@
     app/2,
     app_deps/2,
     dep_apps/2,
+    new/0,
     new/1,
     stop/1
 ]).
@@ -94,12 +95,21 @@ add(#brt_xref{xref = X, apps = Apps} = XRef, [{Name, _, Path} = App | Adds]) ->
             add(XRef, Adds)
     end;
 add(XRef, [{LibDir} | Adds]) ->
-    case file:list_dir_all(LibDir) of
-        {'ok', Subs} ->
-            Paths = [filename:join(LibDir, Sub) || Sub <- Subs],
-            add(XRef, Paths ++ Adds);
-        {'error', What} ->
-            brt:file_error(LibDir, What)
+    %
+    % LibDir not existing is ok, but if it's something other than a directory
+    % assume it's a misconfiguration.
+    %
+    case filelib:is_file(LibDir) of
+        'true' ->
+            case file:list_dir_all(LibDir) of
+                {'ok', Subs} ->
+                    Paths = [filename:join(LibDir, Sub) || Sub <- Subs],
+                    add(XRef, Paths ++ Adds);
+                {'error', What} ->
+                    brt:file_error(LibDir, What)
+            end;
+        _ ->
+            add(XRef, Adds)
     end;
 add(#brt_xref{xref = X, apps = Apps} = XRef, [Path | Adds]) ->
     case brt:is_app_dir(Path) of
@@ -169,6 +179,18 @@ dep_apps(#brt_xref{xref = X}, Apps) when erlang:is_list(Apps) ->
 dep_apps(XRef, App) ->
     dep_apps(XRef, [App]).
 
+-spec new() -> {'ok', xref()} | brt:err_result().
+%%
+%% @doc Starts an empty XRef server.
+%%
+new() ->
+    case xref:start([{'xref_mode', 'modules'}]) of
+        {'ok', Pid} ->
+            {'ok', #brt_xref{xref = Pid}};
+        _ ->
+            {'error', {'brt', 'xref_start_failed'}}
+    end.
+
 -spec new(StateOrApps :: brt:rebar_state() | addable() | [addable()])
         -> {'ok', xref()} | brt:err_result().
 %%
@@ -177,7 +199,7 @@ dep_apps(XRef, App) ->
 %% When the input is a list, it is handled according to the rules for input to
 %% the {@link add/2} function.
 %%
-%% An empty server can be started by providing an empty input list.
+%% Providing an empty input list is equivalent to {@link new/0}.
 %%
 new(State) when ?is_rebar_state(State) ->
     case brt_rebar:apps_deps_dirs(State) of
@@ -189,14 +211,9 @@ new(State) when ?is_rebar_state(State) ->
             Error
     end;
 new([]) ->
-    case xref:start([{'xref_mode', 'modules'}]) of
-        {'ok', Pid} ->
-            {'ok', #brt_xref{xref = Pid}};
-        _ ->
-            {'error', {'brt', 'xref_start_failed'}}
-    end;
+    new();
 new(Dirs) ->
-    case new([]) of
+    case new() of
         {'ok', XRef} ->
             add(XRef, Dirs);
         Error ->

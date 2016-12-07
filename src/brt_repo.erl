@@ -26,6 +26,7 @@
     branch/1,
     commit/1,
     dirty/1,
+    pull/1,
     tag/1,
     version/1
 ]).
@@ -44,6 +45,8 @@
 -type version()     ::  {vsn_type(), string()}.
 -type vsn_type()    ::  'branch' | 'tag' | 'ref'.
 -type year()        ::  brt:year1970().
+
+-define(GIT_MIN_VSN,    [2, 0]).
 
 %% ===================================================================
 %% API
@@ -110,11 +113,12 @@ branch(Repo) ->
 commit(Repo) ->
     version(['ref'], Repo).
 
--spec dirty(Repo :: repo()) -> boolean() | brt:err_result().
+-spec dirty(Repo :: repo())
+        -> 'false' | {'true', [string()]} | brt:err_result().
 %%
 %% @doc Reports whether there are uncommitted changes in Repo.
 %%
-%% Returns 'true' if there are:
+%% Returns {'true', [OutLine]} if there are:
 %%  - tracked files that have been changed
 %%  - untracked files that are not ignored
 %%
@@ -125,8 +129,29 @@ dirty(Repo) ->
             case CmdOut of
                 {'ok', []} ->
                     'false';
-                {'ok', _} ->
-                    'true';
+                {'ok', Out} ->
+                    {'true', lists:reverse(Out)};
+                Error ->
+                    Error
+            end;
+        _ ->
+            {'error', lists:flatten([Repo, ": Not a Git repository"])}
+    end.
+
+-spec pull(Repo :: repo()) -> {'ok', [string()]} | brt:err_result().
+%%
+%% @doc Updates Repo from its default remote repository.
+%%
+%% On success, the command's output is returned as a list of lines, without
+%% their terminating newlines.
+%%
+pull(Repo) ->
+    case filelib:is_dir(filename:join(Repo, ".git")) of
+        'true' ->
+            CmdOut = git_cmd(Repo, ["pull"], []),
+            case CmdOut of
+                {'ok', Out} ->
+                    {'ok', lists:reverse(Out)};
                 Error ->
                     Error
             end;
@@ -318,10 +343,20 @@ check_git([_|_] = Exe) ->
             {'args', ["--version"]}, {'env', []}, {'line', 1024},
             'exit_status', 'stderr_to_stdout', 'hide', 'eof']),
         try handle_port(Port, []) of
-            {'ok', ["git version 1." ++ _]} ->
-                {'oldgit', Exe};
-            {'ok', ["git version " ++ _]} ->
-                {'ok', Exe};
+            {'ok', [VsnLine]} ->
+                case re:run(VsnLine, "^git\\s+version\\s+(\\S+)\\b",
+                        [{'capture', 'all_but_first', 'list'}]) of
+                    {'match', [VsnStr]} ->
+                        case brt:is_min_version(
+                                ?GIT_MIN_VSN, brt:parse_version(VsnStr)) of
+                            'true' ->
+                                {'ok', Exe};
+                            _ ->
+                                {'oldgit', Exe}
+                        end;
+                    _ ->
+                        {'notgit', Exe}
+                end;
             {'ok', _} ->
                 {'notgit', Exe};
             {'error', RC, _} ->

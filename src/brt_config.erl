@@ -30,6 +30,7 @@
     init/0,
     init/1,
     merge/1,
+    overwrite_blocked/1,
     pkg_dep/1,
     pkg_dep/2,
     pkg_repo/2,
@@ -197,6 +198,21 @@ merge(Dir) ->
                 {'error', What} ->
                     brt:file_error(File, What)
             end
+    end.
+
+-spec overwrite_blocked(File :: brt:fs_path()) -> boolean().
+%%
+%% @doc Reports whether automated overwrite of the specified file is blocked.
+%%
+overwrite_blocked(File) ->
+    % At present, only the 'protect' flag is recognized within a file of
+    % Erlang terms. If it's anything else, or doesn't exist, it's allowed.
+    case file:consult(File) of
+        {'ok', Terms} ->
+            BRT = brt:get_key_list('brt', Terms),
+            proplists:get_value('protect', BRT, 'false');
+        _ ->
+            'false'
     end.
 
 -spec pkg_dep(Package :: brt:app_name() | brt:dep_spec()) -> brt:dep_spec().

@@ -32,6 +32,10 @@
 
 -include("brt.hrl").
 
+% TODO: Set this to 3.3.3 when it's tagged.
+% This is the version that contains the profile precedence fix.
+-define(REBAR_MIN_VSN,  [3, 3, 2, 3638]).
+
 %%====================================================================
 %% provider API
 %%====================================================================
@@ -80,6 +84,29 @@ format_error(Error) ->
 %% Internal
 %%====================================================================
 
+-spec check_rebar_version() -> 'ok'.
+%
+% Check the Rebar version and warn or raise an error accordingly.
+%
+check_rebar_version() ->
+    {'ok', RebarVsnStr} = application:get_key('rebar', 'vsn'),
+    RebarVsn = brt:parse_version(RebarVsnStr),
+    case brt:is_min_version(?REBAR_MIN_VSN, RebarVsn) of
+        'true' ->
+            'ok';
+        _ ->
+            VsnStr = case RebarVsn of
+                [N | _] when erlang:is_integer(N) ->
+                    brt:version_string(RebarVsn);
+                _ ->
+                    RebarVsnStr
+            end,
+            rebar_api:warn(
+                "Using Rebar ~s may not work properly."
+                " Upgrade to ~s or higher.",
+                [VsnStr, brt:version_string(?REBAR_MIN_VSN)])
+    end.
+
 -spec command_mod_spec(Cmd :: atom() | string(), Mods :: [module()])
         -> {atom(), module(), brt:prv_spec()} | 'false'.
 %
@@ -101,10 +128,16 @@ command_mod_spec(_, []) ->
 -spec init_prov_env(Mods :: [module()], State :: brt:rebar_state())
         -> {'ok', brt:rebar_state()}.
 %
-% The Rebar state's 'command_args' element hasn't been populated at this point,
-% so we have to prowl around a bit depending on how Rebar was invoked.
+% If one of our commands has been invoked:
+% - Check the Rebar version.
+% - See if there are any options requiring early adjustment of the log level.
 %
 init_prov_env(Mods, State) ->
+    %
+    % The Rebar state's 'command_args' element hasn't been populated at this
+    % point, so we have to prowl around a bit depending on how Rebar was
+    % invoked.
+    %
     Caller = rebar_state:get(State, 'caller'),
     [CmdIn | Args] = case Caller of
         'command_line' ->
@@ -115,30 +148,35 @@ init_prov_env(Mods, State) ->
     end,
     case command_mod_spec(CmdIn, Mods) of
         {_Cmd, _Mod, Spec} ->
+            check_rebar_version(),
             maybe_adjust_log_level(Spec, Args, Caller),
             {'ok', State};
         'false' ->
             {'ok', State}
     end.
 
--spec init_providers(Mods :: [module()], State :: {'ok', brt:rebar_state()})
+-spec init_providers(
+    Mods :: [module()], Result :: {'ok', brt:rebar_state()} | brt:err_result())
         -> {'ok', brt:rebar_state()} | brt:err_result().
 %
 % Initialize the command providers.
-% Yes, this could be done with lists:foldl/3, but doing it explicitly here is
-% handy for working out the kinks that are a natural part of developing rebar
-% providers.
+% Yes, this could be done with lists:foldl/3, since providers' init/1 function
+% is only (currently) allowed to return success, but doing it explicitly here
+% allows:
+% - Bailing out early if we decide to return errors at some point.
+% - Instrumenting the calls to work out the kinks that are a natural part of
+%   developing rebar providers.
 %
 init_providers([Mod | Mods], {'ok', State}) ->
+    % ?BRT_VAR(Mod),
     init_providers(Mods, Mod:init(State));
 init_providers(_, Result) ->
     Result.
 
 -spec maybe_adjust_log_level(
-        Spec :: brt:prv_spec(), Args :: [string()], Caller :: atom())
-        -> 'ok'.
+    Spec :: brt:prv_spec(), Args :: [string()], Caller :: atom()) -> 'ok'.
 %
-% If the 'quiet command line switch was given to a BRT command ensure the
+% If the 'quiet' command line switch was given to a BRT command ensure the
 % log level is no higher than 'error'.
 % If the 'warn' command line switch was given to a BRT command ensure the
 % log level is no higher than 'warn'.

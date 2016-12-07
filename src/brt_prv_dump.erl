@@ -128,6 +128,7 @@ long_desc() ->
     allow_provider_overrides
 ]).
 
+-spec dump(State :: brt:rebar_state()) -> 'ok'.
 dump(State) ->
     Fields = case rebar_state:command_args(State) of
         [] ->
@@ -138,6 +139,8 @@ dump(State) ->
     ['state_t' | Elems] = erlang:tuple_to_list(State),
     dump(Elems, 1, Fields).
 
+-spec fields(Fields :: [string()], Result :: [non_neg_integer()])
+        -> [non_neg_integer()].
 fields([Field | Fields], Result) ->
     case list_pos(brt:to_atom(Field), ?STATE_FIELDS, 1) of
         0 ->
@@ -153,13 +156,11 @@ fields([], Result) ->
         Pos     :: non_neg_integer(),
         Fields  :: [non_neg_integer()])
         -> 'ok'.
-
 dump([Elem | Elems], Pos, Fields)
         when erlang:is_tuple(Elem)
         andalso erlang:tuple_size(Elem) > 1
         andalso erlang:element(1, Elem) =:= 'dict' ->
     dump([dict:to_list(Elem) | Elems], Pos, Fields);
-
 dump([Elem | Elems], Pos, Fields) ->
     case lists:member(Pos, Fields) of
         'true' ->
@@ -168,15 +169,17 @@ dump([Elem | Elems], Pos, Fields) ->
             'ok'
     end,
     dump(Elems, (Pos + 1), Fields);
-
 dump([], _, _) ->
     'ok'.
 
+-spec label(Pos :: non_neg_integer()) -> atom() | string().
 label(Pos) when Pos =< erlang:length(?STATE_FIELDS) ->
     lists:nth(Pos, ?STATE_FIELDS);
 label(Pos) ->
     erlang:integer_to_list(Pos).
 
+-spec list_pos(Elem :: term(), Elems :: list(), Pos :: non_neg_integer())
+        -> non_neg_integer().
 list_pos(Elem, [Elem | _], Pos) ->
     Pos;
 list_pos(Elem, [_ | Elems], Pos) ->

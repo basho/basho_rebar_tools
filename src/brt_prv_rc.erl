@@ -224,7 +224,7 @@ update_rebar_config(
         'false', File, {Name, _, _} = App, XrefDeps, _, _) ->
     ProdDeps = XrefDeps -- [Name],
     TestDeps = brt_fudge:test_deps(App) -- XrefDeps,
-    Config = brt_defaults:rebar_config(ProdDeps, TestDeps, []),
+    Config = brt_defaults:rebar_config(Name, ProdDeps, TestDeps, []),
     write_rebar_config(File, Config, 'current');
 
 update_rebar_config(
@@ -248,7 +248,8 @@ update_rebar_config(
                 _ ->
                     ProdDeps = XrefDeps -- [Name],
                     TestDeps = brt_fudge:test_deps(App) -- XrefDeps,
-                    Config = brt_defaults:rebar_config(ProdDeps, TestDeps, []),
+                    Config = brt_defaults:rebar_config(
+                        Name, ProdDeps, TestDeps, []),
                     write_rebar_config(FileOut, Config, CpyInfo)
             end
     end.
@@ -260,11 +261,16 @@ update_rebar_config(
         -> 'ok' | brt:prv_error().
 
 write_rebar_config(File, Config, CpyInfo) ->
-    case file:open(File, ['write']) of
-        {'ok', IoDev} ->
-            Result = brt_io:write_rebar_config(IoDev, Config, CpyInfo),
-            _ = file:close(IoDev),
-            Result;
-        {'error', What} ->
-            brt:file_error(File, What)
+    case brt_config:overwrite_blocked(File) of
+        'true' ->
+            {'error', {?MODULE, {'overwrite_blocked', File}}};
+        _ ->
+            case file:open(File, ['write']) of
+                {'ok', IoDev} ->
+                    Result = brt_io:write_rebar_config(IoDev, Config, CpyInfo),
+                    _ = file:close(IoDev),
+                    Result;
+                {'error', What} ->
+                    brt:file_error(File, What)
+            end
     end.

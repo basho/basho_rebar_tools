@@ -119,7 +119,7 @@ long_desc() ->
 -type context() ::  {brt_xref:xref(), boolean()}.
 
 -spec handle_command(
-        Opts :: [proplists:property()], State :: brt:rebar_state())
+    Opts :: [proplists:property()], State :: brt:rebar_state())
         -> {'ok', brt:rebar_state()} | brt:prv_error().
 handle_command(Opts, State) ->
     case brt_xref:new(State) of

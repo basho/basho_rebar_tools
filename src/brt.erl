@@ -28,6 +28,8 @@
 
 % API
 -export([
+    abspath/1,
+    abspath/2,
     app_dir_to_name/1,
     consult_app_file/2,
     dep_list/1,
@@ -43,11 +45,14 @@
     implements_behaviour/1,
     is_app_dir/1,
     is_list_key/2,
+    is_min_version/2,
     list_modules/1,
+    parse_version/1,
     read_app_file/2,
     to_atom/1,
     to_binary/1,
-    to_string/1
+    to_string/1,
+    version_string/1
 ]).
 
 % Types
@@ -144,6 +149,30 @@ implements_behaviour(Module) ->
 %% ===================================================================
 %% API
 %% ===================================================================
+
+-spec abspath(Path :: file:name_all()) -> fs_path().
+%%
+%% @doc Returns the canonical representation of the specified Path.
+%%
+%% If Path is not absolute, it is resolved relative to the CWD.
+%%
+%% "." and ".." elements are resolved, symbolic links are not.
+%% The resulting path is not guaranteed to exist.
+%%
+abspath(Path) ->
+    direct_path(filename:absname(Path)).
+
+-spec abspath(Path :: file:name_all(), RelDir :: file:name_all()) -> fs_path().
+%%
+%% @doc Returns the canonical representation of the specified Path.
+%%
+%% If Path is not absolute, it is resolved relative to RelDir.
+%%
+%% "." and ".." elements are resolved, symbolic links are not.
+%% The resulting path is not guaranteed to exist.
+%%
+abspath(Path, RelDir) ->
+    direct_path(filename:absname(Path, RelDir)).
 
 -spec app_dir_to_name(AppDir :: fs_path()) -> app_name().
 %%
@@ -280,6 +309,8 @@ format_error('copyright_dirty') ->
     "Multiple or non-Basho copyrights, adjust manually";
 format_error('deps_mismatch') ->
     "Static and calculated dependencies differ";
+format_error('repo_fail') ->
+    "Repository operation failed";
 format_error({?MODULE, What}) ->
     format_error(What);
 format_error({'error', What}) ->
@@ -384,6 +415,32 @@ is_list_key(Key, [_ | Terms]) ->
 is_list_key(_, []) ->
     'false'.
 
+-spec is_min_version(
+        Required :: [non_neg_integer()],
+        Version :: [non_neg_integer()] | term())
+        -> boolean().
+%%
+%% @doc Reports whether Version is logically >= Required.
+%%
+%% Version may be any term to accommodate version parsing errors, but the
+%% function returns 'false' if it is anything other than a list of non-negative
+%% integers.
+%%
+is_min_version([], []) ->
+    'true';
+is_min_version([], [Vsn | _]) when erlang:is_integer(Vsn) andalso Vsn >= 0 ->
+    'true';
+is_min_version([_|_], []) ->
+    'false';
+is_min_version([N | Req], [N | Vsn]) when erlang:is_integer(N) andalso N >= 0 ->
+    is_min_version(Req, Vsn);
+is_min_version([Req | _], [Vsn | _])
+        when erlang:is_integer(Req) andalso Req >= 0
+        andalso erlang:is_integer(Vsn) andalso Vsn >= 0 ->
+    Vsn > Req;
+is_min_version(_, _) ->
+    'false'.
+
 -spec list_modules(ModPrefix :: string()) -> [module()] | err_result().
 %%
 %% @doc Return the list of modules in this application matching ModPrefix.
@@ -430,6 +487,15 @@ read_app_file(Dir, FileName) ->
     file_operation('read_file', Dir, FileName).
 -endif.
 
+-spec parse_version(Version :: string()) -> [non_neg_integer()] | err_result().
+%%
+%% @doc Parses a SemVer string into a corresponding list of integers.
+%%
+%% Any remainder that doesn't match the pattern .[0-9]+ is discarded.
+%%
+parse_version(VsnIn) ->
+    parse_version_str(VsnIn, []).
+
 -spec to_atom(Term :: atom() | binary() | [byte() | [byte()]]) -> atom().
 %%
 %% @doc Return Term as an atom.
@@ -465,27 +531,65 @@ to_string(Term) when erlang:is_atom(Term) ->
 to_string(Term) when erlang:is_binary(Term) ->
     erlang:binary_to_list(Term);
 to_string(Term) when erlang:is_list(Term) ->
-    case io_lib:deep_char_list(Term) of
+    case io_lib:char_list(Term) of
         'true' ->
-            lists:flatten(Term);
+            Term;
         _ ->
-            % go the extra mile in case it's an iolist()
-            try
-                lists:flatten(io_lib:format("~s", [Term]))
-            catch
-                'error':'badarg' ->
-                    erlang:error('badarg', [Term])
+            case io_lib:deep_char_list(Term) of
+                'true' ->
+                    lists:flatten(Term);
+                _ ->
+                    % go the extra mile in case it's an iolist()
+                    try
+                        lists:flatten(io_lib:format("~s", [Term]))
+                    catch
+                        'error':'badarg' ->
+                            erlang:error('badarg', [Term])
+                    end
             end
     end;
 to_string(Term) ->
     erlang:error('badarg', [Term]).
 
+-spec version_string(Version :: [non_neg_integer()]) -> string().
+%%
+%% @doc Return a string representation of Version.
+%%
+version_string([N | _] = Version) when erlang:is_integer(N) andalso N >= 0 ->
+    string:join([erlang:integer_to_list(V) || V <- Version], ".");
+version_string(Arg) ->
+    erlang:error('badarg', [Arg]).
+
 %% ===================================================================
 %% Internal
 %% ===================================================================
 
+-spec direct_path(AbsPath :: file:filename_all()) -> fs_path().
+%
+% Returns the specified absolute Path with "." and ".." resolved.
+%
+direct_path(AbsPath) ->
+    [Root | Segments] = filename:split(AbsPath),
+    to_string(direct_path(Segments, [Root])).
+
+-spec direct_path(Segments :: [file:name_all()], Parent :: [file:name_all()])
+        -> file:filename_all().
+%
+% Inner loop for direct_path/1.
+%
+direct_path(["." | Segments], Parent) ->
+    direct_path(Segments, Parent);
+direct_path([".." | Segments], [_] = Root) ->
+    direct_path(Segments, Root);
+direct_path([".." | Segments], [_ | Parent]) ->
+    direct_path(Segments, Parent);
+direct_path([Segment | Segments], Parent) ->
+    direct_path(Segments, [Segment | Parent]);
+direct_path([], Result) ->
+    filename:join(lists:reverse(Result)).
+
 -spec file_operation(
-    Func :: atom(), Dir :: atom() | string(), FileName :: string())
+        Func :: atom(), Dir :: atom() | string(), FileName :: string())
         -> {'ok', term()} | err_result().
 %
 % Invoke file:Func(FullFilePath) on an application file.
@@ -526,8 +630,32 @@ find_first([], [_ | Paths], Func, Names) ->
 find_first(_, [], _, _) ->
     'false'.
 
+-spec parse_version_str(VsnIn :: [char()], Result :: [non_neg_integer()])
+        -> [non_neg_integer()] | err_result().
 %
-% VERY tightly coupled code follows - beware infinite recursion!
+% Parses a SemVer string into a list of non-negative integers.
+%
+% Recognizes Rebar's "+build." notation.
+%
+parse_version_str([Ch | _ ] = VsnIn, Result)
+        when Ch >= $0 andalso Ch =< $9 ->
+    {Vsn, More} = string:to_integer(VsnIn),
+    parse_version_str(More, Result ++ [Vsn]);
+parse_version_str([$. | [Ch | _ ] = VsnIn], [_|_] = Result)
+        when Ch >= $0 andalso Ch =< $9 ->
+    parse_version_str(VsnIn, Result);
+parse_version_str("+build." ++ [Ch | Rest], [_|_] = Result)
+        when Ch >= $0 andalso Ch =< $9 ->
+    parse_version_str([Ch | Rest], Result);
+parse_version_str(_, [_|_] = Result) ->
+    Result;
+parse_version_str(VsnIn, _) ->
+    {'error', {?MODULE, {'not_version_string', VsnIn}}}.
+
+%
+% Everything below here implements brt_dir/1, and is VERY tightly coupled.
+%
+% Beware infinite recursion!
 %
 
 -spec brt_dir(atom() | string()) -> fs_path() | err_result().

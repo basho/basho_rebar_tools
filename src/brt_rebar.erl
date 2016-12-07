@@ -59,8 +59,6 @@
                         -> {'ok', fold_ctx()} | brt:err_result()).
 -type fold_pred()   ::  fun((brt:app_spec(), brt:rebar_state()) -> boolean()).
 
-
-
 -define(REBAR_CFG_NAMES_KEY,    {?MODULE, 'rebar_config_names'}).
 -define(REBAR_CFG_NAMES(),      erlang:get(?REBAR_CFG_NAMES_KEY)).
 -define(REBAR_CFG_NAMES(New),   erlang:put(?REBAR_CFG_NAMES_KEY, New)).
@@ -168,15 +166,21 @@ apps_deps_dirs(State) when ?is_rebar_state(State) ->
             % and comes up with where any given application might be built.
             % Best not to muck around in here without the rebar source in front
             % of you.
-            BaseDir = rebar_dir:base_dir(State),
-            BldDir  = rebar_state:get(State, 'base_dir'),
-            CoDir   = rebar_dir:checkouts_dir(State),
+            % Some paths and/or segments may have embedded dots, so make sure
+            % they're canonical for later comparisons.
+            % Rebar's rebar_dir:make_normalized_path/1 should do the same thing
+            % as brt:abspath/1, but the latter is used in non-rebar-specific
+            % code so use it here, too ... just in case.
+            BaseDir = brt:abspath(rebar_dir:base_dir(State)),
+            BldDir  = brt:abspath(rebar_state:get(State, 'base_dir')),
+            CoDir   = brt:abspath(rebar_dir:checkouts_dir(State)),
             LibDir  = rebar_state:get(State, 'deps_dir'),
             % Put together all of the library directories where dependencies
             % might be found - these directories MAY NOT all exist!
             % The checkouts directory is always at the head of the result list,
             % and the 'default' profile directory is always the last.
-            Cands   = [filename:join([BldDir, Prof, LibDir]) || Prof <- Profs],
+            Cands   = [brt:abspath(filename:join([BldDir, Prof, LibDir]))
+                        || Prof <- Profs],
             Tail    = [Cand || Cand <- Cands, Cand /= BaseDir, Cand /= CoDir],
             Libs    = [CoDir, BaseDir | Tail],
             {'ok', Specs, Libs}
@@ -420,7 +424,8 @@ fold(Pred, Func, Context, State) ->
 in_checkouts({_, Path, _}, State) ->
     in_checkouts(Path, State);
 in_checkouts(Path, State) ->
-    filename:dirname(Path) == rebar_dir:checkouts_dir(State).
+    brt:abspath(filename:dirname(Path))
+        == brt:abspath(rebar_dir:checkouts_dir(State)).
 
 -spec in_prj_or_checkouts(
         App :: brt:app_spec() | brt:fs_path(), State :: brt:rebar_state())
@@ -444,7 +449,7 @@ in_project({Name, _, _}, State) ->
             rebar_app_info:name(AppInfo) == AppInfName
         end, rebar_state:project_apps(State));
 in_project(Path, State) ->
-    Path == rebar_state:dir(State).
+    brt:abspath(Path) == brt:abspath(rebar_state:dir(State)).
 
 -spec init() -> 'ok'.
 %% @private
