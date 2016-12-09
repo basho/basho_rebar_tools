@@ -30,8 +30,6 @@ Specifically, just because we _can_ automate a bunch of repository manipulation 
 A recent version of Rebar3 is required, and the latest version is ***strongly*** recomended.
 
 Proper handling of profiles requires Rebar3 version `3.3.2+build.3638` or later.
-As of this writing, you'll have to build it yourself from the `master` branch at [the rebar3 GitHub repository][rebar3src].
-The necessary changes will be included in the next release of Rebar3, presumably v3.3.3.
 
 ### Add The Plugin
 
@@ -40,7 +38,7 @@ The following addition to `rebar.config` makes the plugin available for use:
 ```erlang
 {plugins, [
     {basho_rebar_tools,
-        {git, "git://github.com/tburghart/basho_rebar_tools.git",
+        {git, "git://github.com/basho/basho_rebar_tools.git",
         {branch, "develop"}}}
 ]}.
 ```
