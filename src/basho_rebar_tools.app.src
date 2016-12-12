@@ -22,13 +22,15 @@
 {application, basho_rebar_tools,
 [
     {description,   "Basho development support tools"},
-    {vsn,           "0.1.0"},
+    {vsn,           "0.3.0"},
     {modules,       []},
     {registered,    []},
     {applications,  [
-        kernel,
-        stdlib,
         compiler,
+        inets,
+        kernel,
+        ssl,
+        stdlib,
         tools
     ]}
 ]}.
