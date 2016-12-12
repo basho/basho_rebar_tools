@@ -309,6 +309,8 @@ format_error('copyright_dirty') ->
     "Multiple or non-Basho copyrights, adjust manually";
 format_error('deps_mismatch') ->
     "Static and calculated dependencies differ";
+format_error('overwrite_blocked') ->
+    "Overwrite disabled by BRT attribute";
 format_error('repo_fail') ->
     "Repository operation failed";
 format_error({?MODULE, What}) ->

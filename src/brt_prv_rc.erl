@@ -41,6 +41,10 @@
         "is read and written as Erlang terms."},
     ?BRT_RECURSIVE_OPT,
     ?BRT_CHECKOUTS_OPT,
+    {'skip', $s, "skip", 'boolean',
+        "When operating recursively (-r|--recursive), skip rebar.config "
+        "files whose brt.protect flag disallows updates. "
+        "A warning, rather than an error, is issued for such files."},
     ?BRT_LOOSE_OPT,
     {'name', $n, "name", 'string',
         "Prepend <name> to the candidate rebar.config file names. "
@@ -150,7 +154,13 @@ long_desc() ->
 %% Internal
 %%====================================================================
 
--type context() ::  {brt_xref:xref(), boolean(), boolean()}.
+-record(ctx, {
+    xref    :: brt_xref:xref(),
+    deps    :: boolean(),
+    loose   :: boolean(),
+    skip    :: boolean()
+}).
+-type context() ::  #ctx{}.
 
 -spec handle_command(
         Opts :: [proplists:property()], State :: brt:rebar_state())
@@ -158,10 +168,15 @@ long_desc() ->
 handle_command(Opts, State) ->
     case brt_xref:new(State) of
         {'ok', XRef} ->
-            Context = {XRef,
-                proplists:get_value('loose', Opts, 'false'),
-                proplists:get_value('deps', Opts, 'false')},
-            Select  = case proplists:get_value('recurse', Opts) of
+            Recurse = proplists:get_value('recurse', Opts),
+            Context = #ctx{
+                xref    = XRef,
+                deps    = proplists:get_value('deps', Opts, 'false'),
+                loose   = proplists:get_value('loose', Opts, 'false'),
+                skip    = Recurse /= 'true' andalso
+                        proplists:get_value('skip', Opts) == 'true'
+            },
+            Select = case Recurse of
                 'true' ->
                     case proplists:get_value('checkouts', Opts) of
                         'true' ->
@@ -190,7 +205,7 @@ handle_command(Opts, State) ->
         State   :: brt:rebar_state())
         -> {'ok', context()} | brt:prv_error().
 
-update({Name, Path, _} = App, {XRef, Loose, DepsOnly} = Context, _State) ->
+update({Name, Path, _} = App, #ctx{xref = XRef} = Context, _State) ->
     rebar_api:debug("~s:update/3: App = ~p", [?MODULE, App]),
     case brt_xref:app_deps(XRef, Name) of
         {'ok', XrefDeps} ->
@@ -198,7 +213,7 @@ update({Name, Path, _} = App, {XRef, Loose, DepsOnly} = Context, _State) ->
             case update_rebar_config(
                     brt:find_first('file', FileNames, [Path]),
                     filename:absname(erlang:hd(FileNames), Path),
-                    App, XrefDeps, Loose, DepsOnly) of
+                    App, XrefDeps, Context) of
                 'ok' ->
                     {'ok', Context};
                 Err ->
@@ -209,26 +224,26 @@ update({Name, Path, _} = App, {XRef, Loose, DepsOnly} = Context, _State) ->
     end.
 
 -spec update_rebar_config(
-        FileIn      :: brt:fs_path() | 'false',
-        FileOut     :: brt:fs_path(),
-        App         :: brt:app_spec(),
-        XrefDeps    :: [brt:app_name()],
-        Loose       :: boolean(),
-        DepsOnly    :: boolean())
+    FileIn      :: brt:fs_path() | 'false',
+    FileOut     :: brt:fs_path(),
+    App         :: brt:app_spec(),
+    XrefDeps    :: [brt:app_name()],
+    Context     :: context())
         -> 'ok' | brt:prv_error().
 
-update_rebar_config('false', _, {_, Path, _}, _, _, 'true') ->
+update_rebar_config('false', _, {_, Path, _}, _, #ctx{deps = 'true'}) ->
     {'error', {?MODULE, {'no_rebar_config', Path}}};
 
 update_rebar_config(
-        'false', File, {Name, _, _} = App, XrefDeps, _, _) ->
+        'false', File, {Name, _, _} = App, XrefDeps, #ctx{skip = Skip}) ->
     ProdDeps = XrefDeps -- [Name],
     TestDeps = brt_fudge:test_deps(App) -- XrefDeps,
     Config = brt_defaults:rebar_config(Name, ProdDeps, TestDeps, []),
-    write_rebar_config(File, Config, 'current');
+    write_rebar_config(File, Config, 'current', Skip);
 
 update_rebar_config(
-        FileIn, FileOut, {Name, _, _} = App, XrefDeps, Loose, DepsOnly) ->
+        FileIn, FileOut, {Name, _, _} = App, XrefDeps,
+        #ctx{deps = DepsOnly, loose = Loose, skip = Skip}) ->
     case brt_rebar:copyright_info(FileIn, Loose, 'erl') of
         {'error', _} = CpyErr ->
             CpyErr;
@@ -241,7 +256,7 @@ update_rebar_config(
                                 || A <- (XrefDeps -- [Name])],
                             Conf = lists:keystore(
                                 'deps', 1, Terms, {'deps', Deps}),
-                            write_rebar_config(FileOut, Conf, CpyInfo);
+                            write_rebar_config(FileOut, Conf, CpyInfo, Skip);
                         {'error', What} ->
                             brt:file_error(FileIn, What)
                     end;
@@ -250,20 +265,27 @@ update_rebar_config(
                     TestDeps = brt_fudge:test_deps(App) -- XrefDeps,
                     Config = brt_defaults:rebar_config(
                         Name, ProdDeps, TestDeps, []),
-                    write_rebar_config(FileOut, Config, CpyInfo)
+                    write_rebar_config(FileOut, Config, CpyInfo, Skip)
             end
     end.
 
 -spec write_rebar_config(
-        File    :: brt:fs_path(),
-        Config  :: brt:rebar_conf(),
-        CpyInfo :: 'current' | brt:basho_year() | iolist())
+    File        :: brt:fs_path(),
+    Config      :: brt:rebar_conf(),
+    CpyInfo     :: 'current' | brt:basho_year() | iolist(),
+    WarnBlocked :: boolean())
         -> 'ok' | brt:prv_error().
 
-write_rebar_config(File, Config, CpyInfo) ->
+write_rebar_config(File, Config, CpyInfo, WarnBlocked) ->
     case brt_config:overwrite_blocked(File) of
         'true' ->
-            {'error', {?MODULE, {'overwrite_blocked', File}}};
+            case WarnBlocked of
+                'true' ->
+                    rebar_api:warn("~s: ~s",
+                        [format_error('overwrite_blocked'), File]);
+                _ ->
+                    {'error', {?MODULE, {'overwrite_blocked', File}}}
+            end;
         _ ->
             case file:open(File, ['write']) of
                 {'ok', IoDev} ->
