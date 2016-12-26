@@ -19,12 +19,12 @@
 %% -------------------------------------------------------------------
 
 %%
-%% @doc BRT provider for the 'brt-dump' command.
+%% @doc BRT provider for the `brt-dump' command.
 %%
 -module(brt_prv_dump).
 
 %% provider behavior
--ifndef(brt_validate).
+-ifndef(BRT_VALIDATE).
 -behaviour(brt).
 -endif.
 -export([do/1, format_error/1, init/1, spec/0]).
@@ -33,7 +33,7 @@
 
 -define(PROVIDER_ATOM,  'brt-dump').
 -define(PROVIDER_STR,   "brt-dump").
--define(PROVIDER_DEPS,  ['lock']).
+-define(PROVIDER_DEPS,  [lock]).
 -define(PROVIDER_OPTS,  []).
 
 % Dialyzer doesn't want us peeking inside opaque types, but we want to give
@@ -47,15 +47,15 @@
 %% Behavior
 %% ===================================================================
 
--spec init(State :: brt:rebar_state()) -> {'ok', brt:rebar_state()}.
+-spec init(State :: brt:rebar_state()) -> {ok, brt:rebar_state()}.
 %%
 %% @doc Adds the command provider to rebar's state.
 %%
 init(State) ->
     Provider = providers:create(spec()),
-    {'ok', rebar_state:add_provider(State, Provider)}.
+    {ok, rebar_state:add_provider(State, Provider)}.
 
--spec do(State :: brt:rebar_state()) -> {'ok', brt:rebar_state()}.
+-spec do(State :: brt:rebar_state()) -> {ok, brt:rebar_state()}.
 %%
 %% @doc Display provider information.
 %%
@@ -64,7 +64,7 @@ do(State) ->
 
 -spec format_error(Error :: term()) -> iolist().
 %%
-%% @doc Placeholder to fill out the 'provider' API, should never be called.
+%% @doc Placeholder to fill out the `provider' API, should never be called.
 %%
 format_error(Error) ->
     brt:format_error(Error).
@@ -75,14 +75,14 @@ format_error(Error) ->
 %%
 spec() ->
     [
-        {'name',        ?PROVIDER_ATOM},
-        {'module',      ?MODULE},
-        {'bare',        'false'},
-        {'deps',        ?PROVIDER_DEPS},
-        {'example',     "rebar3 " ?PROVIDER_STR "[<field> ...]"},
-        {'short_desc',  short_desc()},
-        {'desc',        long_desc()},
-        {'opts',        ?PROVIDER_OPTS}
+        {name,          ?PROVIDER_ATOM},
+        {module,        ?MODULE},
+        {bare,          false},
+        {deps,          ?PROVIDER_DEPS},
+        {example,       "rebar3 " ?PROVIDER_STR "[<field> ...]"},
+        {short_desc,    short_desc()},
+        {desc,          long_desc()},
+        {opts,          ?PROVIDER_OPTS}
     ].
 
 %%====================================================================
@@ -97,8 +97,8 @@ short_desc() ->
 long_desc() ->
     short_desc() ++ "\n"
     "\n"
-    "If you want to dump the entire rebar state, try the 'state' command for "
-    "prettier formatting.\n"
+    "If you want to dump the entire rebar state, try the \"state\" command "
+    "for prettier formatting.\n"
     "This command allows dumping just a portion of the state, as specified by "
     "a list of record field names on the command line.\n".
 
@@ -128,7 +128,7 @@ long_desc() ->
     allow_provider_overrides
 ]).
 
--spec dump(State :: brt:rebar_state()) -> 'ok'.
+-spec dump(State :: brt:rebar_state()) -> ok.
 dump(State) ->
     Fields = case rebar_state:command_args(State) of
         [] ->
@@ -136,7 +136,7 @@ dump(State) ->
         Args ->
             fields(Args, [])
     end,
-    ['state_t' | Elems] = erlang:tuple_to_list(State),
+    [state_t | Elems] = erlang:tuple_to_list(State),
     dump(Elems, 1, Fields).
 
 -spec fields(Fields :: [string()], Result :: [non_neg_integer()])
@@ -155,22 +155,22 @@ fields([], Result) ->
         Elems   :: [term()],
         Pos     :: non_neg_integer(),
         Fields  :: [non_neg_integer()])
-        -> 'ok'.
+        -> ok.
 dump([Elem | Elems], Pos, Fields)
         when erlang:is_tuple(Elem)
         andalso erlang:tuple_size(Elem) > 1
-        andalso erlang:element(1, Elem) =:= 'dict' ->
+        andalso erlang:element(1, Elem) =:= dict ->
     dump([dict:to_list(Elem) | Elems], Pos, Fields);
 dump([Elem | Elems], Pos, Fields) ->
     case lists:member(Pos, Fields) of
-        'true' ->
+        true ->
             io:format("~s:~n    ~p~n", [label(Pos), Elem]);
         _ ->
-            'ok'
+            ok
     end,
     dump(Elems, (Pos + 1), Fields);
 dump([], _, _) ->
-    'ok'.
+    ok.
 
 -spec label(Pos :: non_neg_integer()) -> atom() | string().
 label(Pos) when Pos =< erlang:length(?STATE_FIELDS) ->

@@ -19,12 +19,12 @@
 %% -------------------------------------------------------------------
 
 %%
-%% @doc BRT provider for the 'brt-up' command.
+%% @doc BRT provider for the `brt-up' command.
 %%
 -module(brt_prv_up).
 
 %% provider behavior
--ifndef(brt_validate).
+-ifndef(BRT_VALIDATE).
 -behaviour(brt).
 -endif.
 -export([do/1, format_error/1, init/1, spec/0]).
@@ -33,7 +33,7 @@
 
 -define(PROVIDER_ATOM,  'brt-up').
 -define(PROVIDER_STR,   "brt-up").
--define(PROVIDER_DEPS,  ['lock']).
+-define(PROVIDER_DEPS,  [lock]).
 -define(PROVIDER_OPTS,  [
     ?BRT_RECURSIVE_OPT,
     ?BRT_CHECKOUTS_OPT,
@@ -44,20 +44,20 @@
 %% Behavior
 %% ===================================================================
 
--spec init(State :: brt:rebar_state()) -> {'ok', brt:rebar_state()}.
+-spec init(State :: brt:rebar_state()) -> {ok, brt:rebar_state()}.
 %%
 %% @doc Adds the command provider to rebar's state.
 %%
 init(State) ->
     Provider = providers:create(spec()),
-    {'ok', rebar_state:add_provider(State, Provider)}.
+    {ok, rebar_state:add_provider(State, Provider)}.
 
--spec do(State :: brt:rebar_state()) -> {'ok', brt:rebar_state()}.
+-spec do(State :: brt:rebar_state()) -> {ok, brt:rebar_state()}.
 %%
 %% @doc Execute the provider command logic.
 %%
 do(State) ->
-    {'ok', State}.
+    {ok, State}.
 
 -spec format_error(Error :: term()) -> iolist().
 %%
@@ -72,14 +72,14 @@ format_error(Error) ->
 %%
 spec() ->
     [
-        {'name',        ?PROVIDER_ATOM},
-        {'module',      ?MODULE},
-        {'bare',        'true'},
-        {'deps',        ?PROVIDER_DEPS},
-        {'example',     "rebar3 " ?PROVIDER_STR},
-        {'short_desc',  short_desc()},
-        {'desc',        long_desc()},
-        {'opts',        ?PROVIDER_OPTS}
+        {name,          ?PROVIDER_ATOM},
+        {module,        ?MODULE},
+        {bare,          true},
+        {deps,          ?PROVIDER_DEPS},
+        {example,       "rebar3 " ?PROVIDER_STR},
+        {short_desc,    short_desc()},
+        {desc,          long_desc()},
+        {opts,          ?PROVIDER_OPTS}
     ].
 
 %%====================================================================

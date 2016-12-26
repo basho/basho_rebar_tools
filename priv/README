@@ -24,3 +24,14 @@ with matching names less the "default." prefix, or their logical equivalents.
 Note that these read as terms only, using file:consult/1, so comments in them
 are not included in generated files.
 
+default.gitignore
+-----------------
+This is the body of a "standard" .gitignore file for use in Erlang projects.
+
+The file includes exclusions relating to patterns used Basho Makefiles.
+
+default.gitignore.nif
+---------------------
+Appended to the "standard" .gitignore above for use in NIF projects.
+
+The file includes exclusions relating to patterns used Basho Makefiles.

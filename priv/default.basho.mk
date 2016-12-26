@@ -10,14 +10,7 @@ REBAR3	:= $(cache)/rebar3
 dl_tgts	+= $(REBAR3)
 endif
 export	REBAR3
-RM	?= /bin/rm -f
-
-#
-# The default edoc layout leaves the monospaced font tiny, so we simply
-# append a tweak to the generated stylesheet.
-#
-cssfile := $(prj_dir)/doc/stylesheet.css
-cssaddl := code,kbd,pre,tt { font-size: larger; }
+RM	?= /bin/rm
 
 .PHONY	: check clean clean-deps clean-docs clean-dist compile dialyzer \
 	  default docs prereqs test validate veryclean xref
@@ -39,28 +32,27 @@ clean-deps :: clean
 	$(RM) -rf $(prj_dir)/_build
 
 clean-docs ::
-	$(RM) -rf $(prj_dir)/doc/*
+	$(REBAR3) as docs clean
 
 clean-dist ::
 
 docs :: prereqs
 	$(REBAR3) edoc
-	@grep -q '$(cssaddl)' $(cssfile) || echo '$(cssaddl)' >> $(cssfile)
-
-test :: prereqs
-	$(REBAR3) as test do eunit
 
 dialyzer :: prereqs
-	$(REBAR3) as check do dialyzer
+	$(REBAR3) as check dialyzer
 
-xref :: prereqs
-	$(REBAR3) as check do xref
+test :: prereqs
+	$(REBAR3) eunit
 
 validate :: prereqs
-	$(REBAR3) as validate do compile
+	$(REBAR3) as validate compile
 
-veryclean :: clean clean-deps clean-dist clean-docs
+veryclean :: clean clean-docs clean-deps clean-dist
 	$(RM) -rf $(cache)
+
+xref :: prereqs
+	$(REBAR3) as check xref
 
 #
 # how to download files if we need to

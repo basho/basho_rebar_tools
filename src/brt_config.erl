@@ -52,22 +52,22 @@
 -type state()   ::  #saved{}.
 -type config()  ::  [{atom(), term()}].
 
--define(CONFIG_TERMS_KEY,       {?MODULE, 'terms'}).
+-define(CONFIG_TERMS_KEY,       {?MODULE, terms}).
 -define(CONFIG_TERMS(),         erlang:get(?CONFIG_TERMS_KEY)).
 -define(CONFIG_TERMS(New),      erlang:put(?CONFIG_TERMS_KEY, New)).
 
--define(CONFIG_FILE_KEY,        {?MODULE, 'file'}).
+-define(CONFIG_FILE_KEY,        {?MODULE, file}).
 -define(CONFIG_FILE(),          erlang:get(?CONFIG_FILE_KEY)).
 -define(CONFIG_FILE(New),       erlang:put(?CONFIG_FILE_KEY, New)).
 
--define(BRT_CFG_NAMES_KEY,      {?MODULE, 'brt_config_names'}).
+-define(BRT_CFG_NAMES_KEY,      {?MODULE, brt_config_names}).
 -define(BRT_CFG_NAMES(),        erlang:get(?BRT_CFG_NAMES_KEY)).
 -define(BRT_CFG_NAMES(New),     erlang:put(?BRT_CFG_NAMES_KEY, New)).
 
 %
 % Implementation Notes:
 %
-%   It's tempting to use 'proplists' operations on the configuration, but it
+%   It's tempting to use `proplists' operations on the configuration, but it
 %   silently returns the default if there's a matching tuple with other than
 %   2 elements, so a munged up element might not be flagged as such.
 %
@@ -86,7 +86,7 @@
 config() ->
     ?CONFIG_TERMS().
 
--spec config_file() -> brt:fs_path() | 'undefined'.
+-spec config_file() -> brt:fs_path() | undefined.
 %%
 %% @doc Returns the file from which the initial configuration was loaded.
 %%
@@ -102,7 +102,7 @@ config_file() ->
 %%
 dep_erl_opts(Deps, Opts) ->
     dep_erl_opts(Deps, Opts,
-        brt:get_key_list('dep_erl_opts', ?CONFIG_TERMS())).
+        brt:get_key_list(dep_erl_opts, ?CONFIG_TERMS())).
 
 -spec dep_makefile(Deps :: [brt:dep_spec()], Content :: iolist()) -> iolist().
 %%
@@ -135,45 +135,45 @@ dep_makefile(_, Content) ->
 %%
 dep_plugins(Deps, Plugins) ->
     Config  = ?CONFIG_TERMS(),
-    Conf    = brt:get_key_list('dep_plugins', Config),
-    Raw     = brt:get_key_list('raw', Config),
+    Conf    = brt:get_key_list(dep_plugins, Config),
+    Raw     = brt:get_key_list(raw, Config),
     case brt:dep_list_member(?APP_NAME_ATOM, Plugins) of
-        'true' ->
+        true ->
             dep_plugins(Deps, Plugins, Conf, Raw);
         _ ->
             dep_plugins(Deps, [?APP_NAME_ATOM | Plugins], Conf, Raw)
     end.
 
--spec init() -> 'ok' | brt:err_result().
+-spec init() -> ok | brt:err_result().
 %%
 %% @doc Initializes the runtime configuration.
 %%
 init() ->
-    {'ok', CWD} = file:get_cwd(),
+    {ok, CWD} = file:get_cwd(),
     init([CWD]).
 
--spec init(Dirs :: [file:name()]) -> 'ok' | brt:err_result().
+-spec init(Dirs :: [file:name()]) -> ok | brt:err_result().
 %%
 %% @doc Initializes the runtime configuration.
 %%
 init(Dirs) ->
     DefaultFile = "brt.config",
     FileNames = case os:getenv("BRT_CONFIG") of
-        'false' ->
+        false ->
             [DefaultFile];
         Val ->
             [Val, DefaultFile]
     end,
     ?BRT_CFG_NAMES(FileNames),
     case init(Dirs, brt_defaults:file_terms(DefaultFile)) of
-        'ok' ->
+        ok ->
             brt_rebar:init();
         Err ->
             Err
     end.
 
 -spec merge(AppDir :: brt:fs_path())
-        -> {'ok', state()} | brt:err_result().
+        -> {ok, state()} | brt:err_result().
 %%
 %% @doc Merges the BRT config file from Dir, if any, and returns a reset object.
 %%
@@ -182,20 +182,20 @@ init(Dirs) ->
 merge(Dir) ->
     Config  = config(),
     State   = #saved{file = config_file(), conf = Config},
-    Exclude = brt:get_key_list('no_inherit', Config),
+    Exclude = brt:get_key_list(no_inherit, Config),
     Inherit = lists:filter(
         fun({Key, _}) -> not lists:member(Key, Exclude) end, Config),
     case config_file(Dir) of
-        'false' ->
+        false ->
             ?CONFIG_TERMS(Inherit),
-            {'ok', State};
+            {ok, State};
         File ->
             case file:consult(File) of
-                {'ok', Local} ->
+                {ok, Local} ->
                     ?CONFIG_TERMS(merge(Inherit, Local)),
                     ?CONFIG_FILE(File),
-                    {'ok', State};
-                {'error', What} ->
+                    {ok, State};
+                {error, What} ->
                     brt:file_error(File, What)
             end
     end.
@@ -205,14 +205,14 @@ merge(Dir) ->
 %% @doc Reports whether automated overwrite of the specified file is blocked.
 %%
 overwrite_blocked(File) ->
-    % At present, only the 'protect' flag is recognized within a file of
+    % At present, only the `protect' flag is recognized within a file of
     % Erlang terms. If it's anything else, or doesn't exist, it's allowed.
     case file:consult(File) of
-        {'ok', Terms} ->
-            BRT = brt:get_key_list('brt', Terms),
-            proplists:get_value('protect', BRT, 'false');
+        {ok, Terms} ->
+            BRT = brt:get_key_list(brt, Terms),
+            proplists:get_value(protect, BRT, false);
         _ ->
-            'false'
+            false
     end.
 
 -spec pkg_dep(Package :: brt:app_name() | brt:dep_spec()) -> brt:dep_spec().
@@ -240,13 +240,13 @@ pkg_dep(Package, Spec)
             {PkgName, Spec}
     end,
     OldConf = ?CONFIG_TERMS(),
-    OldDeps = brt:get_key_list('deps', OldConf),
+    OldDeps = brt:get_key_list(deps, OldConf),
     NewDeps = lists:keystore(PkgName, 1, OldDeps, DepSpec),
-    NewConf = lists:keystore('deps', 1, OldConf, {'deps', NewDeps}),
+    NewConf = lists:keystore(deps, 1, OldConf, {deps, NewDeps}),
     ?CONFIG_TERMS(NewConf),
     DepSpec;
 pkg_dep(Package, Spec) ->
-    erlang:error('badarg', [Package, Spec]).
+    erlang:error(badarg, [Package, Spec]).
 
 -spec pkg_repo(
     Package :: brt:app_name(), Repo :: brt:app_name() | brt:dep_loc())
@@ -262,18 +262,18 @@ pkg_repo(Package, Repo) ->
         List when erlang:is_list(List) ->
             URL = lists:flatten(List),
             case io_lib:printable_latin1_list(URL) of
-                'true' ->
+                true ->
                     {PkgName, URL};
                 _ ->
-                    erlang:error('badarg', [Package, Repo])
+                    erlang:error(badarg, [Package, Repo])
             end;
         _ ->
-            erlang:error('badarg', [Package, Repo])
+            erlang:error(badarg, [Package, Repo])
     end,
     OldConf = ?CONFIG_TERMS(),
-    OldReps = brt:get_key_list('repos', OldConf),
+    OldReps = brt:get_key_list(repos, OldConf),
     NewReps = lists:keystore(PkgName, 1, OldReps, PkgRepo),
-    NewConf = lists:keystore('repos', 1, OldConf, {'repos', NewReps}),
+    NewConf = lists:keystore(repos, 1, OldConf, {repos, NewReps}),
     ?CONFIG_TERMS(NewConf),
     PkgRepo.
 
@@ -287,51 +287,51 @@ pkg_version(Package, {Type, Label} = Version)
     PkgName = brt:to_atom(Package),
     FlatVsn = lists:flatten(Label),
     PkgVers = case io_lib:char_list(FlatVsn) of
-        'true' ->
+        true ->
             {PkgName, {Type, FlatVsn}};
         _ ->
-            erlang:error('badarg', [Package, Version])
+            erlang:error(badarg, [Package, Version])
     end,
     OldConf = ?CONFIG_TERMS(),
-    OldVers = brt:get_key_list('versions', OldConf),
+    OldVers = brt:get_key_list(versions, OldConf),
     NewVers = lists:keystore(PkgName, 1, OldVers, PkgVers),
-    NewConf = lists:keystore('versions', 1, OldConf, {'versions', NewVers}),
+    NewConf = lists:keystore(versions, 1, OldConf, {versions, NewVers}),
     ?CONFIG_TERMS(NewConf),
     PkgVers;
 pkg_version(Package, Version) when erlang:is_list(Version) ->
-    pkg_version(Package, {'ref', Version});
+    pkg_version(Package, {ref, Version});
 pkg_version(Package, Version) ->
-    erlang:error('badarg', [Package, Version]).
+    erlang:error(badarg, [Package, Version]).
 
--spec reset(State :: state()) -> 'ok'.
+-spec reset(State :: state()) -> ok.
 %%
 %% @doc Restores the BRT state returned by a previous merge/1 call.
 %%
 reset(#saved{file = File, conf = Conf}) ->
     ?CONFIG_FILE(File),
     ?CONFIG_TERMS(Conf),
-    'ok'.
+    ok.
 
 %% ===================================================================
 %% Internal
 %% ===================================================================
 
--spec config_file(Dir :: brt:fs_path()) -> brt:fs_path() | 'false'.
+-spec config_file(Dir :: brt:fs_path()) -> brt:fs_path() | false.
 config_file(Dir) ->
     config_file(?BRT_CFG_NAMES(), Dir).
 
 -spec config_file(Names :: [brt:fs_path()], Dir :: brt:fs_path())
-        -> brt:fs_path() | 'false'.
+        -> brt:fs_path() | false.
 config_file([Name | Names], Dir) ->
     File = filename:absname(Name, Dir),
     case filelib:is_regular(File) of
-        'true' ->
+        true ->
             File;
         _ ->
             config_file(Names, Dir)
     end;
 config_file([], _) ->
-    'false'.
+    false.
 
 -spec dep_erl_opts(
         Deps    :: [brt:app_name() | brt:dep_spec()],
@@ -351,7 +351,7 @@ dep_erl_opts([DepSpec | Deps], Opts, Conf) when ?is_rebar_dep(DepSpec) ->
     dep_erl_opts([erlang:element(1, DepSpec) | Deps], Opts, Conf);
 
 dep_erl_opts([Dep | _], _, _) ->
-    erlang:error('badarg', [Dep]);
+    erlang:error(badarg, [Dep]);
 
 dep_erl_opts([], Opts, _) ->
     lists:usort(Opts).
@@ -366,16 +366,16 @@ dep_erl_opts([], Opts, _) ->
 dep_plugins([AppName | Deps], Plugins, Conf, Raw) when ?is_app_name(AppName) ->
     AppConf = brt:get_key_list(AppName, Conf),
     RawConf = case lists:member(AppName, Raw)
-            andalso not lists:member('rebar_raw_resource', AppConf) of
-        'true' ->
-            ['rebar_raw_resource' | AppConf];
+            andalso not lists:member(rebar_raw_resource, AppConf) of
+        true ->
+            [rebar_raw_resource | AppConf];
         _ ->
             AppConf
     end,
     Next = lists:foldl(
         fun(Dep, Result) ->
             case brt:dep_list_member(Dep, Result) of
-                'true' ->
+                true ->
                     Result;
                 _ ->
                     [Dep | Result]
@@ -386,20 +386,20 @@ dep_plugins([AppName | Deps], Plugins, Conf, Raw) when ?is_app_name(AppName) ->
 dep_plugins([DepSpec | Deps], Plugins, Conf, Raw) when ?is_rebar_dep(DepSpec)
         andalso erlang:is_tuple(erlang:element(2, DepSpec))
         andalso erlang:tuple_size(erlang:element(2, DepSpec)) > 1
-        andalso erlang:element(1, erlang:element(2, DepSpec)) =:= 'raw' ->
+        andalso erlang:element(1, erlang:element(2, DepSpec)) =:= raw ->
     NextDeps = [erlang:element(1, DepSpec) | Deps],
-    case brt:dep_list_member('rebar_raw_resource', Plugins) of
-        'true' ->
+    case brt:dep_list_member(rebar_raw_resource, Plugins) of
+        true ->
             dep_plugins(NextDeps, Plugins, Conf, Raw);
         _ ->
-            dep_plugins(NextDeps, ['rebar_raw_resource' | Plugins], Conf, Raw)
+            dep_plugins(NextDeps, [rebar_raw_resource | Plugins], Conf, Raw)
     end;
 
 dep_plugins([DepSpec | Deps], Plugins, Conf, Raw) when ?is_rebar_dep(DepSpec) ->
     dep_plugins([erlang:element(1, DepSpec) | Deps], Plugins, Conf, Raw);
 
 dep_plugins([Dep | _], _, _, _) ->
-    erlang:error('badarg', [Dep]);
+    erlang:error(badarg, [Dep]);
 
 dep_plugins([], Plugins, _, _) ->
     lists:sort(brt:dep_list(Plugins)).
@@ -407,15 +407,15 @@ dep_plugins([], Plugins, _, _) ->
 -spec get_pkg_dep(Config :: config(), Package :: brt:app_name())
         -> brt:dep_spec().
 get_pkg_dep(Config, Package) ->
-    case brt:get_key_tuple(Package, brt:get_key_list('deps', Config)) of
-        'undefined' ->
+    case brt:get_key_tuple(Package, brt:get_key_list(deps, Config)) of
+        undefined ->
             Spec = {
-                brt:get_key_value('default_repo_type', Config),
+                brt:get_key_value(default_repo_type, Config),
                 get_pkg_repo(Config, Package),
                 get_pkg_version(Config, Package)},
-            case lists:member(Package, brt:get_key_list('raw', Config)) of
-                'true' ->
-                    {Package, {'raw', Spec}};
+            case lists:member(Package, brt:get_key_list(raw, Config)) of
+                true ->
+                    {Package, {raw, Spec}};
                 _ ->
                     {Package, Spec}
             end;
@@ -426,10 +426,10 @@ get_pkg_dep(Config, Package) ->
 -spec get_pkg_repo(Config :: config(), Package :: brt:app_name())
         -> brt:dep_loc().
 get_pkg_repo(Config, Package) ->
-    case brt:get_key_tuple(Package, brt:get_key_list('repos', Config)) of
-        'undefined' ->
+    case brt:get_key_tuple(Package, brt:get_key_list(repos, Config)) of
+        undefined ->
             lists:flatten(io_lib:format(
-                brt:get_key_value('default_repo_format', Config), [Package]));
+                brt:get_key_value(default_repo_format, Config), [Package]));
         {_, Target} when erlang:is_atom(Target) ->
             get_pkg_repo(Config, Target);
         {_, Repo} ->
@@ -439,39 +439,39 @@ get_pkg_repo(Config, Package) ->
 -spec get_pkg_version(Config :: config(), Package :: brt:app_name())
         -> brt:dep_vsn().
 get_pkg_version(Config, Package) ->
-    case brt:get_key_tuple(Package, brt:get_key_list('versions', Config)) of
-        'undefined' ->
-            brt:get_key_value('default_repo_version', Config);
+    case brt:get_key_tuple(Package, brt:get_key_list(versions, Config)) of
+        undefined ->
+            brt:get_key_value(default_repo_version, Config);
         {_, Vsn} ->
             Vsn
     end.
 
 -spec init(Dirs :: [brt:fs_path()], Defaults :: list())
-        -> 'ok' | brt:err_result().
+        -> ok | brt:err_result().
 
 init([Dir | Dirs], Defaults) ->
     case config_file(Dir) of
-        'false' ->
+        false ->
             init(Dirs, Defaults);
         File ->
             case file:consult(File) of
-                {'ok', Config} ->
+                {ok, Config} ->
                     ?CONFIG_FILE(File),
                     ?CONFIG_TERMS(merge(Defaults, Config)),
-                    'ok';
-                {'error', What} ->
+                    ok;
+                {error, What} ->
                     brt:file_error(File, What)
             end
     end;
 
 init([], Defaults) ->
     ?CONFIG_TERMS(Defaults),
-    'ok'.
+    ok.
 
 -spec merge(Defaults :: config(), Config :: config()) -> config().
 
 merge(Defaults, Config) ->
-    Nested  = brt:get_key_list('nested_merge_sects', Defaults),
+    Nested  = brt:get_key_list(nested_merge_sects, Defaults),
     merge_terms(Config, Defaults, Nested).
 
 -spec merge_terms(Terms :: config(), Result :: list(), Nested :: [term()])
@@ -480,11 +480,11 @@ merge(Defaults, Config) ->
 merge_terms([{Key, AddElems} = Term | Terms], Result, Nested)
         when erlang:is_list(AddElems) ->
     NextResult = case lists:member(Key, Nested) of
-        'true' ->
+        true ->
             case lists:keytake(Key, 1, Result) of
-                {'value', {_, PrevElems}, NewResult} ->
+                {value, {_, PrevElems}, NewResult} ->
                     [{Key, merge_list(AddElems, PrevElems)} | NewResult];
-                'false' ->
+                false ->
                     [Term | Result]
             end;
         _ ->
@@ -498,7 +498,7 @@ merge_terms([Term | Terms], Result, Nested)
     merge_terms(Terms, lists:keystore(Key, 1, Result, Term), Nested);
 
 merge_terms([_|_] = Terms, _, _) ->
-    erlang:error('badarg', [Terms]);
+    erlang:error(badarg, [Terms]);
 
 merge_terms([], Result, _) ->
     Result.
@@ -512,7 +512,7 @@ merge_list([Term | Terms], Result)
 
 merge_list([Term | Terms], Result) ->
     case lists:member(Term, Result) of
-        'true' ->
+        true ->
             merge_list(Terms, Result);
         _ ->
             merge_list(Terms, [Term | Result])

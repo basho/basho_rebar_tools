@@ -43,7 +43,7 @@
 -type file()        ::  brt:fs_path().
 -type repo()        ::  brt:fs_path().
 -type version()     ::  {vsn_type(), string()}.
--type vsn_type()    ::  'branch' | 'tag' | 'ref'.
+-type vsn_type()    ::  branch | tag | ref.
 -type year()        ::  brt:year1970().
 
 -define(GIT_MIN_VSN,    [2, 0]).
@@ -61,22 +61,22 @@
 %%
 added_year(AppFile, Default) ->
     case filelib:is_regular(AppFile) of
-        'true' ->
+        true ->
             CmdOut = git_cmd(filename:dirname(AppFile),
                 ["log", "--date=format:%Y", "--format=%ad",
                     "--", filename:basename(AppFile)], []),
             case CmdOut of
-                {'ok', [Year | _]} ->
+                {ok, [Year | _]} ->
                     erlang:list_to_integer(Year);
-                {'ok', []} ->
+                {ok, []} ->
                     Default;
                 Error ->
                     Error
             end;
         _ ->
             case filelib:is_file(AppFile) of
-                'true' ->
-                    {'error', lists:flatten(
+                true ->
+                    {error, lists:flatten(
                         [AppFile, " exists but is not a file"])};
                 _ ->
                     Default
@@ -89,14 +89,14 @@ added_year(AppFile, Default) ->
 %%
 %% Returns:
 %%
-%%  {'branch', Branch}
+%%  {`branch', Branch}
 %%      Latest commit is the HEAD of Branch.
 %%
-%%  {'error', 'noversion'}
+%%  {`error', noversion}
 %%      Latest commit is not the HEAD of a branch.
 %%
 branch(Repo) ->
-    version(['branch'], Repo).
+    version([branch], Repo).
 
 -spec commit(Repo :: repo()) -> version() | brt:err_result().
 %%
@@ -104,41 +104,41 @@ branch(Repo) ->
 %%
 %% Returns:
 %%
-%%  {'ref', CommitHash}
+%%  {`ref', CommitHash}
 %%      Latest commit.
 %%
-%%  {'error', 'noversion'}
+%%  {`error', noversion}
 %%      The repo has no commits.
 %%
 commit(Repo) ->
-    version(['ref'], Repo).
+    version([ref], Repo).
 
 -spec dirty(Repo :: repo())
-        -> 'false' | {'true', [string()]} | brt:err_result().
+        -> false | {true, [string()]} | brt:err_result().
 %%
 %% @doc Reports whether there are uncommitted changes in Repo.
 %%
-%% Returns {'true', [OutLine]} if there are:
+%% Returns {`true', [OutLine]} if there are:
 %%  - tracked files that have been changed
 %%  - untracked files that are not ignored
 %%
 dirty(Repo) ->
     case filelib:is_dir(filename:join(Repo, ".git")) of
-        'true' ->
+        true ->
             CmdOut = git_cmd(Repo, ["status", "--short"], []),
             case CmdOut of
-                {'ok', []} ->
-                    'false';
-                {'ok', Out} ->
-                    {'true', lists:reverse(Out)};
+                {ok, []} ->
+                    false;
+                {ok, Out} ->
+                    {true, lists:reverse(Out)};
                 Error ->
                     Error
             end;
         _ ->
-            {'error', lists:flatten([Repo, ": Not a Git repository"])}
+            {error, lists:flatten([Repo, ": Not a Git repository"])}
     end.
 
--spec pull(Repo :: repo()) -> {'ok', [string()]} | brt:err_result().
+-spec pull(Repo :: repo()) -> {ok, [string()]} | brt:err_result().
 %%
 %% @doc Updates Repo from its default remote repository.
 %%
@@ -147,16 +147,16 @@ dirty(Repo) ->
 %%
 pull(Repo) ->
     case filelib:is_dir(filename:join(Repo, ".git")) of
-        'true' ->
+        true ->
             CmdOut = git_cmd(Repo, ["pull"], []),
             case CmdOut of
-                {'ok', Out} ->
-                    {'ok', lists:reverse(Out)};
+                {ok, Out} ->
+                    {ok, lists:reverse(Out)};
                 Error ->
                     Error
             end;
         _ ->
-            {'error', lists:flatten([Repo, ": Not a Git repository"])}
+            {error, lists:flatten([Repo, ": Not a Git repository"])}
     end.
 
 -spec tag(Repo :: repo()) -> version() | brt:err_result().
@@ -165,14 +165,14 @@ pull(Repo) ->
 %%
 %% Returns:
 %%
-%%  {'tag', Tag}
+%%  {`tag', Tag}
 %%      Latest commit is exactly Tag.
 %%
-%%  {'error', 'noversion'}
+%%  {`error', noversion}
 %%      Latest commit is not exactly aligned with a tag.
 %%
 tag(Repo) ->
-    version(['tag'], Repo).
+    version([tag], Repo).
 
 
 -spec version(Repo :: repo()) -> version() | brt:err_result().
@@ -181,20 +181,20 @@ tag(Repo) ->
 %%
 %% Returns:
 %%
-%%  {'branch', Branch}
+%%  {`branch', Branch}
 %%      Latest commit is the HEAD of Branch.
 %%
-%%  {'tag', Tag}
+%%  {`tag', Tag}
 %%      Latest commit is exactly Tag.
 %%
-%%  {'ref', CommitHash}
+%%  {`ref', CommitHash}
 %%      Latest commit.
 %%
-%%  {'error', 'noversion'}
+%%  {`error', `noversion'}
 %%      The repo has no commits.
 %%
 version(Repo) ->
-    version(['branch', 'tag', 'ref'], Repo).
+    version([branch, tag, ref], Repo).
 
 %% ===================================================================
 %% Internal
@@ -205,50 +205,50 @@ version(Repo) ->
 
 version(Types, Repo) ->
     case filelib:is_dir(filename:join(Repo, ".git")) of
-        'true' ->
+        true ->
             repo_version(Types, Repo);
         _ ->
-            {'error', lists:flatten([Repo, ": Not a Git repository"])}
+            {error, lists:flatten([Repo, ": Not a Git repository"])}
     end.
 
 -spec repo_version(Types :: [vsn_type()], Repo :: repo())
         -> version() | brt:err_result().
 
-repo_version(['branch' | Types], Repo) ->
+repo_version([branch | Types], Repo) ->
     CmdOut = git_cmd(Repo, ["branch", "--list"], []),
     case CmdOut of
-        {'ok', []} ->
+        {ok, []} ->
             repo_version(Types, Repo);
-        {'ok', List} ->
+        {ok, List} ->
             Filt =
              fun([$*, $\s, Ch | Rest]) when Ch /= $( ->
-                    {'true', [Ch | Rest]};
+                    {true, [Ch | Rest]};
                 (_) ->
-                    'false'
+                    false
             end,
             case lists:filtermap(Filt, List) of
                 [Branch] ->
-                    {'branch', Branch};
+                    {branch, Branch};
                 _ ->
                     repo_version(Types, Repo)
             end;
         Error ->
             Error
     end;
-repo_version(['tag' | Types], Repo) ->
+repo_version([tag | Types], Repo) ->
     CmdOut = git_cmd(Repo, ["describe", "--exact-match"], []),
     case CmdOut of
         % It's possible for more than one tag to point to the latest commit,
         % so just take the last one git printed out, which is (hopefully) the
         % newest.
-        {'ok', [Tag | _]} ->
-            {'tag', Tag};
-        {'ok', _} ->
+        {ok, [Tag | _]} ->
+            {tag, Tag};
+        {ok, _} ->
             repo_version(Types, Repo);
-        {'error', {'git', _, _, [Msg]}} = Error ->
+        {error, {git, _, _, [Msg]}} = Error ->
             case re:run(Msg,
-                    " no tag exactly matches ", [{'capture', 'none'}]) of
-                'match' ->
+                    " no tag exactly matches ", [{capture, none}]) of
+                match ->
                     repo_version(Types, Repo);
                 _ ->
                     Error
@@ -256,18 +256,18 @@ repo_version(['tag' | Types], Repo) ->
         Error ->
             Error
     end;
-repo_version(['ref' | Types], Repo) ->
+repo_version([ref | Types], Repo) ->
     CmdOut = git_cmd(Repo, ["log", "--max-count=1", "--format=%H"], []),
     case CmdOut of
-        {'ok', [Hash]} ->
-            {'ref', Hash};
-        {'ok', _} ->
+        {ok, [Hash]} ->
+            {ref, Hash};
+        {ok, _} ->
             repo_version(Types, Repo);
         Error ->
             Error
     end;
 repo_version([], _Repo) ->
-    {'error', 'noversion'}.
+    {error, noversion}.
 
 %% ===================================================================
 %% Run Git
@@ -276,8 +276,8 @@ repo_version([], _Repo) ->
 -spec git_cmd(
         RunDir  :: dir(),
         ExeArgs :: [string()],
-        ExeEnv  :: [{string(), string() | 'false'}])
-        -> {'ok', [string()]} | brt:err_result().
+        ExeEnv  :: [{string(), string() | false}])
+        -> {ok, [string()]} | brt:err_result().
 %
 % On success, output lines are returned in reverse order for efficiency!
 %   There's a method to my madness - on success, there's often only one line
@@ -292,17 +292,17 @@ repo_version([], _Repo) ->
 % elsewhere.
 %
 git_cmd(RunDir, ExeArgs, ExeEnv) ->
-    ExeKey = {?MODULE, 'git_exe'},
+    ExeKey = {?MODULE, git_exe},
     GitExe = case erlang:get(ExeKey) of
-        'undefined' ->
+        undefined ->
             case find_git() of
-                {'ok', Exe} ->
+                {ok, Exe} ->
                     erlang:put(ExeKey, Exe),
                     Exe;
-                {'notgit', Exe} ->
+                {notgit, Exe} ->
                     erlang:error(lists:flatten(
                         ["Executable '", Exe, "' does not appear to be Git"]));
-                {'oldgit', Exe} ->
+                {oldgit, Exe} ->
                     erlang:error(lists:flatten(
                         ["Git xecutable '", Exe, "' is too old"]));
                 _ ->
@@ -311,56 +311,56 @@ git_cmd(RunDir, ExeArgs, ExeEnv) ->
         Val ->
             Val
     end,
-    Port = erlang:open_port({'spawn_executable', GitExe}, [
-        {'cd', RunDir}, {'args', ExeArgs}, {'env',  ExeEnv},
-        {'line', 16384}, 'exit_status', 'stderr_to_stdout', 'hide', 'eof']),
+    Port = erlang:open_port({spawn_executable, GitExe}, [
+        {cd, RunDir}, {args, ExeArgs}, {env,  ExeEnv},
+        {line, 16384}, exit_status, stderr_to_stdout, hide, eof]),
     try handle_port(Port, []) of
-        {'ok', Output} ->
-            {'ok', Output};
-        {'error', Why, Output} ->
+        {ok, Output} ->
+            {ok, Output};
+        {error, Why, Output} ->
             Cmd = lists:flatten(
                 [RunDir, ": '", string:join([GitExe | ExeArgs], "' '"), $\']),
-            {'error', {'git', Why, Cmd, lists:reverse(Output)}}
+            {error, {git, Why, Cmd, lists:reverse(Output)}}
     after
         erlang:port_close(Port)
     end.
 
 -spec find_git()
-        -> {'ok' | 'notgit' | 'oldgit', brt:fs_path()} | brt:err_result().
+        -> {ok | notgit | oldgit, brt:fs_path()} | brt:err_result().
 find_git() ->
     case check_git(os:getenv("GIT")) of
-        {'ok', _} = Ret ->
+        {ok, _} = Ret ->
             Ret;
         _ ->
             check_git(os:find_executable("git"))
     end.
 
 -spec check_git(Exe :: term())
-        -> {'ok' | 'notgit' | 'oldgit', brt:fs_path()} | brt:err_result().
+        -> {ok | notgit | oldgit, brt:fs_path()} | brt:err_result().
 check_git([_|_] = Exe) ->
     try
-        Port = erlang:open_port({'spawn_executable', Exe}, [
-            {'args', ["--version"]}, {'env', []}, {'line', 1024},
-            'exit_status', 'stderr_to_stdout', 'hide', 'eof']),
+        Port = erlang:open_port({spawn_executable, Exe}, [
+            {args, ["--version"]}, {env, []}, {line, 1024},
+            exit_status, stderr_to_stdout, hide, eof]),
         try handle_port(Port, []) of
-            {'ok', [VsnLine]} ->
+            {ok, [VsnLine]} ->
                 case re:run(VsnLine, "^git\\s+version\\s+(\\S+)\\b",
-                        [{'capture', 'all_but_first', 'list'}]) of
-                    {'match', [VsnStr]} ->
+                        [{capture, all_but_first, list}]) of
+                    {match, [VsnStr]} ->
                         case brt:is_min_version(
                                 ?GIT_MIN_VSN, brt:parse_version(VsnStr)) of
-                            'true' ->
-                                {'ok', Exe};
+                            true ->
+                                {ok, Exe};
                             _ ->
-                                {'oldgit', Exe}
+                                {oldgit, Exe}
                         end;
                     _ ->
-                        {'notgit', Exe}
+                        {notgit, Exe}
                 end;
-            {'ok', _} ->
-                {'notgit', Exe};
-            {'error', RC, _} ->
-                {'error', RC}
+            {ok, _} ->
+                {notgit, Exe};
+            {error, RC, _} ->
+                {error, RC}
         after
             erlang:port_close(Port)
         end
@@ -372,42 +372,42 @@ check_git(Error) ->
     Error.
 
 -spec handle_port(Port :: port(), Accum :: term())
-        -> {'ok', [string()]} | {'error', pos_integer() | 'no_rc', [string()]}.
+        -> {ok, [string()]} | {error, pos_integer() | no_rc, [string()]}.
 
 handle_port(Port, Accum) ->
     receive
-        {Port, {'data', Data}} ->
+        {Port, {data, Data}} ->
             handle_port(Port, Data, Accum);
-        {Port, 'eof'} ->
-            handle_port(Port, 'eof', Accum)
+        {Port, eof} ->
+            handle_port(Port, eof, Accum)
     end.
 
 -spec handle_port(Port :: port(), Data :: term(), Accum :: term())
-        -> {'ok', [string()]} | {'error', pos_integer() | 'no_rc', [string()]}.
+        -> {ok, [string()]} | {error, pos_integer() | no_rc, [string()]}.
 
-handle_port(Port, {'eol', Data}, []) ->
+handle_port(Port, {eol, Data}, []) ->
     handle_port(Port, [Data]);
-handle_port(Port, {'eol', Data}, {Cont, Lines}) ->
+handle_port(Port, {eol, Data}, {Cont, Lines}) ->
     handle_port(Port, [lists:flatten([Cont | Data]) | Lines]);
-handle_port(Port, {'eol', Data}, Lines) ->
+handle_port(Port, {eol, Data}, Lines) ->
     handle_port(Port, [Data | Lines]);
 
-handle_port(Port, {'noeol', Data}, {Cont, Lines}) ->
+handle_port(Port, {noeol, Data}, {Cont, Lines}) ->
     handle_port(Port, {[Cont | Data], Lines});
-handle_port(Port, {'noeol', Data}, Lines) ->
+handle_port(Port, {noeol, Data}, Lines) ->
     handle_port(Port, {Data, Lines});
 
-handle_port(Port, 'eof', {Cont, Lines}) ->
-    handle_port(Port, 'eof', [lists:flatten(Cont) | Lines]);
-handle_port(Port, 'eof', Lines) ->
+handle_port(Port, eof, {Cont, Lines}) ->
+    handle_port(Port, eof, [lists:flatten(Cont) | Lines]);
+handle_port(Port, eof, Lines) ->
     receive
-        {Port, {'exit_status', 0}} ->
-            {'ok', Lines};
-        {Port, {'exit_status', RC}} ->
-            {'error', RC, Lines}
+        {Port, {exit_status, 0}} ->
+            {ok, Lines};
+        {Port, {exit_status, RC}} ->
+            {error, RC, Lines}
     after
         1213 ->
-            {'error', 'no_rc', Lines}
+            {error, no_rc, Lines}
     end.
 
 

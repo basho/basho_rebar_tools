@@ -19,9 +19,9 @@
 %% -------------------------------------------------------------------
 
 %%
-%% @doc BRT provider for the `brt-info' command.
+%% @doc BRT provider for the `brt-ig' command.
 %%
--module(brt_prv_info).
+-module(brt_prv_ig).
 
 %% provider behavior
 -ifndef(BRT_VALIDATE).
@@ -31,10 +31,14 @@
 
 -include("brt.hrl").
 
--define(PROVIDER_ATOM,  'brt-info').
--define(PROVIDER_STR,   "brt-info").
+-define(PROVIDER_ATOM,  'brt-ig').
+-define(PROVIDER_STR,   "brt-ig").
 -define(PROVIDER_DEPS,  []).
--define(PROVIDER_OPTS,  []).
+-define(PROVIDER_OPTS,  [
+    {native, $n, "nif", boolean,
+        "Generate a file with additional exclusions for NIF artifacts."},
+    ?BRT_VERBOSITY_OPTS
+]).
 
 %% ===================================================================
 %% Behavior
@@ -48,16 +52,18 @@ init(State) ->
     Provider = providers:create(spec()),
     {ok, rebar_state:add_provider(State, Provider)}.
 
--spec do(State :: brt:rebar_state()) -> {ok, brt:rebar_state()}.
+-spec do(State :: brt:rebar_state())
+        -> {ok, brt:rebar_state()} | brt:prv_error().
 %%
-%% @doc Display provider information.
+%% @doc Execute the provider command logic.
 %%
 do(State) ->
-    {brt_io:write_info(standard_io), State}.
+    {Opts, _} = rebar_state:command_parsed_args(State),
+    handle_command(Opts, State).
 
 -spec format_error(Error :: term()) -> iolist().
 %%
-%% @doc Placeholder to fill out the `provider' API, should never be called.
+%% @doc Format errors for display.
 %%
 format_error(Error) ->
     brt:format_error(Error).
@@ -82,15 +88,31 @@ spec() ->
 %% Help Text
 %%====================================================================
 
--spec short_desc() -> string().
+-spec short_desc() -> nonempty_string().
 short_desc() ->
-    "Information about " ?APP_NAME_DISPLAY.
+    "Creates or OVERWRITES the .gitignore file in the current directory.".
 
--spec long_desc() -> string().
+-spec long_desc() -> nonempty_string().
 long_desc() ->
-    short_desc().
+    short_desc() ++
+    "\n"
+    "This is a convenience operation and has none of the recursion and naming "
+    "options found in other providers, as that would require calculating "
+    "whether dependencies include NIFs.\n".
 
 %%====================================================================
 %% Internal
 %%====================================================================
 
+-spec handle_command(
+    Opts :: [proplists:property()], State :: brt:rebar_state())
+        -> {ok, brt:rebar_state()} | brt:prv_error().
+handle_command(Opts, State) ->
+    Body = brt_defaults:gitignore(proplists:get_value(native, Opts, false)),
+    File = ".gitignore",
+    case file:write_file(File, Body) of
+        ok ->
+            {ok, State};
+        {error, What} ->
+            brt:file_error(File, What)
+    end.

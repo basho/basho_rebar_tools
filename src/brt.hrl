@@ -29,6 +29,12 @@
 -define(PRV_MOD_PREFIX,     "brt_prv_").
 -define(PRV_CMD_PREFIX,     "brt-").
 
+-ifdef(EDOC).
+-define(opaque, -opaque).
+-else.
+-define(opaque, -type).
+-endif.
+
 %
 % Keep these usable as guard conditions.
 %
@@ -60,8 +66,8 @@
 %
 % Allow +-4 on their sizes.
 %
--define(is_rebar_state(Term), ?is_tuple_minmax('state_t', 15, 23, Term)).
--define(is_rebar_app_info(Term), ?is_tuple_minmax('app_info_t', 17, 25, Term)).
+-define(is_rebar_state(Term), ?is_tuple_minmax(state_t, 15, 23, Term)).
+-define(is_rebar_app_info(Term), ?is_tuple_minmax(app_info_t, 17, 25, Term)).
 
 %
 % The earliest legitimate Basho copyright year.
@@ -74,12 +80,12 @@
 % Common provider options.
 %
 -define(BRT_CHECKOUTS_OPT,
-    {'checkouts', $c, "checkouts", 'boolean',
+    {checkouts, $c, "checkouts", boolean,
         "When operating recursively (-r|--recursive), restrict operations to "
         "the current project and its checkouts directory."}
 ).
 -define(BRT_LOOSE_OPT,
-    {'loose', $l, "loose", 'boolean',
+    {loose, $l, "loose", boolean,
         "Issue a warning, instead of an error, if the input file has an "
         "ambiguous or non-Basho copyright. "
         "The output file is [over]written with the input's original or a "
@@ -87,23 +93,39 @@
         "MUST be reviewed before being committed."}
 ).
 -define(BRT_RECURSIVE_OPT,
-    {'recurse', $r, "recurse", 'boolean',
+    {recurse, $r, "recurse", boolean,
         "Apply the operation to all (true) dependencies, recursively."}
 ).
 -define(BRT_VERBOSITY_OPTS,
-    {'quiet', $q, "quiet", 'boolean',
+    {quiet, $q, "quiet", boolean,
         "Restrict output to errors, "
         "effective only after the plugin is loaded."},
-    {'warn', $w, "warn", 'boolean',
+    {warn, $w, "warn", boolean,
         "Restrict output to warnings and errors, "
         "effective only after the plugin is loaded."}
 ).
 
+-ifdef(BRT_ESCRIPT).
+-define(LOG_DEBUG(Fmt, Arg),
+    io:format(standard_error, "Debug: " ++ Fmt ++ "\n", Arg)).
+-define(LOG_INFO(Fmt, Arg),
+    io:format(Fmt ++ "\n", Arg)).
+-define(LOG_WARN(Fmt, Arg),
+    io:format(standard_error, "Warning: " ++ Fmt ++ "\n", Arg)).
+-define(LOG_ERROR(Fmt, Arg),
+    io:format(standard_error, "Error: " ++ Fmt ++ "\n", Arg)).
+-else.
+-define(LOG_DEBUG(Fmt, Arg),  rebar_api:debug(Fmt, Arg)).
+-define(LOG_INFO(Fmt, Arg),   rebar_api:info(Fmt, Arg)).
+-define(LOG_WARN(Fmt, Arg),   rebar_api:warn(Fmt, Arg)).
+-define(LOG_ERROR(Fmt, Arg),  rebar_api:error(Fmt, Arg)).
+-endif.
+
 %
-% For debugging ONLY!
+% For temporary tracing ONLY!
 %
 -define(BRT_VAR(Var),   io:format(
-    'standard_error', "~s:~b: ~s = ~p\n", [?MODULE, ?LINE, ??Var, Var])).
+    standard_error, "~s:~b: ~s = ~p\n", [?MODULE, ?LINE, ??Var, Var])).
 
 %
 % When built as an EScript, what strategy is used for finding files ...
@@ -112,8 +134,8 @@
 % to. When it's unset, operations are performed on the filesystem in which the
 % plugin was built.
 %
--ifdef(brt_escript).
--define(BRT_ESCRIPT_IO_MOD_KEY, 'brt_escript_app_io_mod').
+-ifdef(BRT_ESCRIPT).
+-define(BRT_ESCRIPT_IO_MOD_KEY, brt_escript_app_io_mod).
 -endif.
 
 % Syntactic sugar.

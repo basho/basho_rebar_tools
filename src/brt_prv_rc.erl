@@ -19,12 +19,12 @@
 %% -------------------------------------------------------------------
 
 %%
-%% @doc BRT provider for the 'brt-rc' command.
+%% @doc BRT provider for the `brt-rc' command.
 %%
 -module(brt_prv_rc).
 
 %% provider behavior
--ifndef(brt_validate).
+-ifndef(BRT_VALIDATE).
 -behaviour(brt).
 -endif.
 -export([do/1, format_error/1, init/1, spec/0]).
@@ -33,20 +33,20 @@
 
 -define(PROVIDER_ATOM,  'brt-rc').
 -define(PROVIDER_STR,   "brt-rc").
--define(PROVIDER_DEPS,  ['compile']).
+-define(PROVIDER_DEPS,  [compile]).
 -define(PROVIDER_OPTS,  [
-    {'deps', $d, "deps", 'boolean',
+    {deps, $d, "deps", boolean,
         "Only update the target file's global 'deps' section. NOTE that even "
         "with a partial update any comments in the file will be lost, as it "
         "is read and written as Erlang terms."},
     ?BRT_RECURSIVE_OPT,
     ?BRT_CHECKOUTS_OPT,
-    {'skip', $s, "skip", 'boolean',
+    {skip, $s, "skip", boolean,
         "When operating recursively (-r|--recursive), skip rebar.config "
         "files whose brt.protect flag disallows updates. "
         "A warning, rather than an error, is issued for such files."},
     ?BRT_LOOSE_OPT,
-    {'name', $n, "name", 'string',
+    {name, $n, "name", string,
         "Prepend <name> to the candidate rebar.config file names. "
         "By default, candidates are $REBAR_CONFIG (if it's set) followed by "
         "\"rebar.config\". "
@@ -56,7 +56,7 @@
         "found, and if no such file exists defaults are used. "
         "This behavior allows writing an updated version of a file with a new "
         "name, leaving the original intact."},
-    {'rebar2', $2, "rebar2", 'boolean',
+    {rebar2, $2, "rebar2", boolean,
         "Write rebar.config elements in Rebar2 format."},
     ?BRT_VERBOSITY_OPTS
 ]).
@@ -65,35 +65,35 @@
 %% Behavior
 %% ===================================================================
 
--spec init(State :: brt:rebar_state()) -> {'ok', brt:rebar_state()}.
+-spec init(State :: brt:rebar_state()) -> {ok, brt:rebar_state()}.
 %%
 %% @doc Adds the command provider to rebar's state.
 %%
 init(State) ->
     Provider = providers:create(spec()),
-    {'ok', rebar_state:add_provider(State, Provider)}.
+    {ok, rebar_state:add_provider(State, Provider)}.
 
 -spec do(State :: brt:rebar_state())
-        -> {'ok', brt:rebar_state()} | brt:prv_error().
+        -> {ok, brt:rebar_state()} | brt:prv_error().
 %%
 %% @doc Execute the provider command logic.
 %%
 do(State) ->
     {Opts, _} = rebar_state:command_parsed_args(State),
-    rebar_api:debug("~s:do/1: Opts = ~p", [?MODULE, Opts]),
-    ResetVersion = case proplists:get_value('rebar2', Opts) of
-        'true' ->
-            brt_rebar:config_format('rebar2');
+    ?LOG_DEBUG("~s:do/1: Opts = ~p", [?MODULE, Opts]),
+    ResetVersion = case proplists:get_value(rebar2, Opts) of
+        true ->
+            brt_rebar:config_format(rebar2);
         _ ->
-            brt_rebar:config_format('default')
+            brt_rebar:config_format(default)
     end,
     FileNames = brt_rebar:cfg_file_names(),
-    ResetNames = case proplists:get_value('name', Opts, 'false') of
-        'false' ->
+    ResetNames = case proplists:get_value(name, Opts, false) of
+        false ->
             FileNames;
         Name ->
             case lists:member(Name, FileNames) of
-                'true' ->
+                true ->
                     case FileNames of
                         [Name | _] ->
                             FileNames;
@@ -123,14 +123,14 @@ format_error(Error) ->
 %%
 spec() ->
     [
-        {'name',        ?PROVIDER_ATOM},
-        {'module',      ?MODULE},
-        {'bare',        'true'},
-        {'deps',        ?PROVIDER_DEPS},
-        {'example',     "rebar3 " ?PROVIDER_STR},
-        {'short_desc',  short_desc()},
-        {'desc',        long_desc()},
-        {'opts',        ?PROVIDER_OPTS}
+        {name,          ?PROVIDER_ATOM},
+        {module,        ?MODULE},
+        {bare,          true},
+        {deps,          ?PROVIDER_DEPS},
+        {example,       "rebar3 " ?PROVIDER_STR},
+        {short_desc,    short_desc()},
+        {desc,          long_desc()},
+        {opts,          ?PROVIDER_OPTS}
     ].
 
 %%====================================================================
@@ -164,25 +164,26 @@ long_desc() ->
 
 -spec handle_command(
         Opts :: [proplists:property()], State :: brt:rebar_state())
-        -> {'ok', brt:rebar_state()} | brt:prv_error().
+        -> {ok, brt:rebar_state()} | brt:prv_error().
 handle_command(Opts, State) ->
+    ?LOG_INFO("Calculating dependencies...", []),
     case brt_xref:new(State) of
-        {'ok', XRef} ->
-            Recurse = proplists:get_value('recurse', Opts),
+        {ok, XRef} ->
+            Recurse = proplists:get_value(recurse, Opts),
             Context = #ctx{
                 xref    = XRef,
-                deps    = proplists:get_value('deps', Opts, 'false'),
-                loose   = proplists:get_value('loose', Opts, 'false'),
-                skip    = Recurse /= 'true' andalso
-                        proplists:get_value('skip', Opts) == 'true'
+                deps    = proplists:get_value(deps, Opts, false),
+                loose   = proplists:get_value(loose, Opts, false),
+                skip    = Recurse /= true andalso
+                        proplists:get_value(skip, Opts) == true
             },
             Select = case Recurse of
-                'true' ->
-                    case proplists:get_value('checkouts', Opts) of
-                        'true' ->
+                true ->
+                    case proplists:get_value(checkouts, Opts) of
+                        true ->
                             fun brt_rebar:in_prj_or_checkouts/2;
                         _ ->
-                            'all'
+                            all
                     end;
                 _ ->
                     brt_rebar:prj_app_specs(State)
@@ -190,8 +191,8 @@ handle_command(Opts, State) ->
             Result = brt_rebar:fold(Select, fun update/3, Context, State),
             brt_xref:stop(XRef),
             case Result of
-                {'ok', _} ->
-                    {'ok', State};
+                {ok, _} ->
+                    {ok, State};
                 Err ->
                     Err
             end;
@@ -203,19 +204,19 @@ handle_command(Opts, State) ->
         App     :: brt:app_spec(),
         Context :: context(),
         State   :: brt:rebar_state())
-        -> {'ok', context()} | brt:prv_error().
+        -> {ok, context()} | brt:prv_error().
 
 update({Name, Path, _} = App, #ctx{xref = XRef} = Context, _State) ->
-    rebar_api:debug("~s:update/3: App = ~p", [?MODULE, App]),
+    ?LOG_DEBUG("~s:update/3: App = ~p", [?MODULE, App]),
     case brt_xref:app_deps(XRef, Name) of
-        {'ok', XrefDeps} ->
+        {ok, XrefDeps} ->
             FileNames = brt_rebar:cfg_file_names(),
             case update_rebar_config(
-                    brt:find_first('file', FileNames, [Path]),
+                    brt:find_first(file, FileNames, [Path]),
                     filename:absname(erlang:hd(FileNames), Path),
                     App, XrefDeps, Context) of
-                'ok' ->
-                    {'ok', Context};
+                ok ->
+                    {ok, Context};
                 Err ->
                     Err
             end;
@@ -224,40 +225,48 @@ update({Name, Path, _} = App, #ctx{xref = XRef} = Context, _State) ->
     end.
 
 -spec update_rebar_config(
-    FileIn      :: brt:fs_path() | 'false',
+    FileIn      :: brt:fs_path() | false,
     FileOut     :: brt:fs_path(),
     App         :: brt:app_spec(),
     XrefDeps    :: [brt:app_name()],
     Context     :: context())
-        -> 'ok' | brt:prv_error().
+        -> ok | brt:prv_error().
 
-update_rebar_config('false', _, {_, Path, _}, _, #ctx{deps = 'true'}) ->
-    {'error', {?MODULE, {'no_rebar_config', Path}}};
+update_rebar_config(false, _, {_, Path, _}, _, #ctx{deps = true}) ->
+    {error, {?MODULE, {no_rebar_config, Path}}};
 
 update_rebar_config(
-        'false', File, {Name, _, _} = App, XrefDeps, #ctx{skip = Skip}) ->
+        false, File, {Name, _, _} = App, XrefDeps, #ctx{skip = Skip}) ->
+    ?LOG_INFO("Writing ~s:~s", [Name, filename:basename(File)]),
     ProdDeps = XrefDeps -- [Name],
     TestDeps = brt_fudge:test_deps(App) -- XrefDeps,
     Config = brt_defaults:rebar_config(Name, ProdDeps, TestDeps, []),
-    write_rebar_config(File, Config, 'current', Skip);
+    write_rebar_config(File, Config, current, Skip);
 
 update_rebar_config(
         FileIn, FileOut, {Name, _, _} = App, XrefDeps,
         #ctx{deps = DepsOnly, loose = Loose, skip = Skip}) ->
-    case brt_rebar:copyright_info(FileIn, Loose, 'erl') of
-        {'error', _} = CpyErr ->
+    if
+        FileIn == FileOut ->
+            ?LOG_INFO("Updating ~s:~s", [Name, filename:basename(FileOut)]);
+        ?else ->
+            ?LOG_INFO("Updating ~s:~s from ~s", [Name,
+                filename:basename(FileOut), filename:basename(FileIn)])
+    end,
+    case brt_rebar:copyright_info(FileIn, Loose, erl) of
+        {error, _} = CpyErr ->
             CpyErr;
         CpyInfo ->
             case DepsOnly of
-                'true' ->
+                true ->
                     case file:consult(FileIn) of
-                        {'ok', Terms} ->
+                        {ok, Terms} ->
                             Deps = [brt_config:pkg_dep(A)
                                 || A <- (XrefDeps -- [Name])],
                             Conf = lists:keystore(
-                                'deps', 1, Terms, {'deps', Deps}),
+                                deps, 1, Terms, {deps, Deps}),
                             write_rebar_config(FileOut, Conf, CpyInfo, Skip);
-                        {'error', What} ->
+                        {error, What} ->
                             brt:file_error(FileIn, What)
                     end;
                 _ ->
@@ -272,27 +281,27 @@ update_rebar_config(
 -spec write_rebar_config(
     File        :: brt:fs_path(),
     Config      :: brt:rebar_conf(),
-    CpyInfo     :: 'current' | brt:basho_year() | iolist(),
+    CpyInfo     :: current | brt:basho_year() | iolist(),
     WarnBlocked :: boolean())
-        -> 'ok' | brt:prv_error().
+        -> ok | brt:prv_error().
 
 write_rebar_config(File, Config, CpyInfo, WarnBlocked) ->
     case brt_config:overwrite_blocked(File) of
-        'true' ->
+        true ->
             case WarnBlocked of
-                'true' ->
-                    rebar_api:warn("~s: ~s",
-                        [format_error('overwrite_blocked'), File]);
+                true ->
+                    ?LOG_WARN("~s: ~s",
+                        [format_error(overwrite_blocked), File]);
                 _ ->
-                    {'error', {?MODULE, {'overwrite_blocked', File}}}
+                    {error, {?MODULE, {overwrite_blocked, File}}}
             end;
         _ ->
-            case file:open(File, ['write']) of
-                {'ok', IoDev} ->
+            case file:open(File, [write]) of
+                {ok, IoDev} ->
                     Result = brt_io:write_rebar_config(IoDev, Config, CpyInfo),
                     _ = file:close(IoDev),
                     Result;
-                {'error', What} ->
+                {error, What} ->
                     brt:file_error(File, What)
             end
     end.

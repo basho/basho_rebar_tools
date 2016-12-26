@@ -1,21 +1,24 @@
-# rebar3 and tools
+# rebar and tools
 *.crashdump
 /.cache/
+/.eqc*
+/.eunit/
+/.rebar/
 /.rebar3/
 /_build/
 /_checkouts
+/deps
 /rebar.lock
-
-# build artifacts
-*.app
-*.beam
-/ebin/
+log/
 
 # work environments
 *.bak
 *.dump
 *.iml
 *.plt
+*.sublime-project
+*.sublime-workspace
+*.tmp
 *.txt
 *_plt
 *~
@@ -24,4 +27,10 @@
 .project
 .settings/
 .tm_properties
-Makefile
+erln8.config
+tmp/
+
+# Erlang artifacts
+*.app
+*.beam
+/ebin/

@@ -21,8 +21,7 @@
 %%
 %% @doc Basho Rebar Tools command provider behavior and common operations.
 %%
-%% The 'brt' behavior has the same callbacks as rebar's 'provider', but with
-%% stricter types.
+%% The `brt' behavior is a superset of rebar's `provider', with stricter types.
 %%
 -module(brt).
 
@@ -85,7 +84,7 @@
 
 -include("brt.hrl").
 
--ifdef(brt_check).
+-ifdef(BRT_CHECK).
 -type rebar_app()   ::  rebar_app_info:t().
 -type rebar_prov()  ::  providers:t().
 -type rebar_state() ::  rebar_state:t().
@@ -99,14 +98,14 @@
 -type app_out_dir() ::  fs_path().
 -type app_spec()    ::  {app_name(), app_src_dir(), app_out_dir()}.
 -type app_src_dir() ::  fs_path().
--type basho_year()  ::  ?BASHO_YEAR_MIN..9999 | 'current'.
+-type basho_year()  ::  ?BASHO_YEAR_MIN..9999 | current.
 -type dep_loc()     ::  string().   % currently, always a GitHub URL
 -type dep_spec()    ::  {app_name(), rsrc_spec() | rsrc_wrap()}.
--type dep_type()    ::  atom().     % currently, 'git' or 'raw'
+-type dep_type()    ::  atom().     % currently, git or raw
 -type dep_vsn()     ::  {atom(), string()} | string().  % branch/tag/ref
--type err_result()  ::  {'error', term()}.
+-type err_result()  ::  {error, term()}.
 -type fs_path()     ::  nonempty_string().
--type prv_error()   ::  {'error', string()} | {'error', {module(), term()}}.
+-type prv_error()   ::  {error, string()} | {error, {module(), term()}}.
 -type prv_spec()    ::  [{atom(), term()}].
 -type rebar_conf()  ::  [rebar_sect()].
 -type rebar_key()   ::  atom().
@@ -136,14 +135,14 @@
 %%
 implements_behaviour(Module) ->
     case code:ensure_loaded(Module) of
-        {'module', Module} ->
+        {module, Module} ->
             lists:all(
                 fun({Function, Arity}) ->
                     erlang:function_exported(Module, Function, Arity)
                 end,
-                [{'do', 1}, {'format_error', 1}, {'init', 1}, {'spec', 0}]);
+                [{do, 1}, {format_error, 1}, {init, 1}, {spec, 0}]);
         _ ->
-            'false'
+            false
     end.
 
 %% ===================================================================
@@ -178,7 +177,7 @@ abspath(Path, RelDir) ->
 %%
 %% @doc Return the name of the app residing in AppDir.
 %%
-%% If there is exactly one .app file in AppDir's 'ebin' directory, the
+%% If there is exactly one .app file in AppDir's `ebin' directory, the
 %% application name from that file is returned, otherwise the basename of the
 %% directory with any version suffix removed is returned.
 %%
@@ -188,15 +187,15 @@ app_dir_to_name(AppDir) ->
     case filelib:wildcard(filename:join([AppDir, "ebin", "*.app"])) of
         [AppFile] ->
             case file:consult(AppFile) of
-                {'ok', App} ->
+                {ok, App} ->
                     case App of
-                        [{'application', AppName, [_|_]}] ->
+                        [{application, AppName, [_|_]}] ->
                             AppName;
                         _ ->
-                            erlang:error('app_malformed', [AppFile])
+                            erlang:error(app_malformed, [AppFile])
                     end;
-                {'error', What} ->
-                    {'error', Error} = file_error(AppFile, What),
+                {error, What} ->
+                    {error, Error} = file_error(AppFile, What),
                     erlang:error(Error)
             end;
         _ ->
@@ -205,21 +204,21 @@ app_dir_to_name(AppDir) ->
     end.
 
 -spec consult_app_file(Dir :: atom() | string(), FileName :: string())
-        -> {'ok', [term()]} | err_result().
+        -> {ok, [term()]} | err_result().
 %%
 %% @doc Return the terms in FileName in the specified application directory.
 %%
 -ifdef(BRT_ESCRIPT_IO_MOD_KEY).
 consult_app_file(Dir, FileName) ->
     case erlang:get(?BRT_ESCRIPT_IO_MOD_KEY) of
-        'undefined' ->
-            file_operation('consult', Dir, FileName);
+        undefined ->
+            file_operation(consult, Dir, FileName);
         Mod ->
             Mod:consult_app_file(Dir, FileName)
     end.
 -else.
 consult_app_file(Dir, FileName) ->
-    file_operation('consult', Dir, FileName).
+    file_operation(consult, Dir, FileName).
 -endif.
 
 -spec dep_list(AppsOrDeps :: [brt:app_name() | brt:dep_spec()])
@@ -229,7 +228,7 @@ consult_app_file(Dir, FileName) ->
 %%
 dep_list(AppsOrDeps) ->
     case lists:all(fun erlang:is_tuple/1, AppsOrDeps) of
-        'true' ->
+        true ->
             AppsOrDeps;
         _ ->
             [brt_config:pkg_dep(Elem) || Elem <- AppsOrDeps]
@@ -256,46 +255,46 @@ dep_name(PkgName) when ?is_app_name(PkgName) ->
 dep_name(PkgSpec) when ?is_rebar_dep(PkgSpec) ->
     erlang:element(1, PkgSpec);
 dep_name(Arg) ->
-    erlang:error('badarg', [Arg]).
+    erlang:error(badarg, [Arg]).
 
 -spec file_error(File :: fs_path(), What :: atom() | tuple())
-        -> {'error', string()}.
+        -> {error, string()}.
 %%
-%% @doc Returns a human-readable representation of a 'file' module error.
+%% @doc Returns a human-readable representation of a `file' module error.
 %%
 file_error(File, What) ->
-    {'error', lists:flatten([File, ": ", file:format_error(What)])}.
+    {error, lists:flatten([File, ": ", file:format_error(What)])}.
 
 -spec find_first(Names :: [fs_path()], Paths :: [fs_path()])
-        -> fs_path() | 'false'.
+        -> fs_path() | false.
 %%
 %% @doc Finds the first filesystem element with one of Names relative to Paths.
 %%
-%% Equivalent to `find_first('any', Names, Paths)'.
+%% @equiv find_first(any, Names, Paths)
 %%
 find_first(Names, Paths) ->
-    find_first(Names, Paths, 'is_file', Names).
+    find_first(Names, Paths, is_file, Names).
 
 -spec find_first(
-        Type    :: 'dir' | 'file' | 'any',
+        Type    :: dir | file | any,
         Names   :: [fs_path()],
         Paths   :: [fs_path()])
-        -> fs_path() | 'false'.
+        -> fs_path() | false.
 %%
 %% @doc Finds the first filesystem Type with one of Names relative to Paths.
 %%
 %% All Names are evaluated in each of Paths, in order, until a matching
 %% existing filesystem element is found and returned.
-%% If none of Names exist relative to any of Paths, 'false' is returned.
+%% If none of Names exist relative to any of Paths, `false' is returned.
 %%
-find_first('any', Names, Paths) ->
-    find_first(Names, Paths, 'is_file', Names);
-find_first('dir', Names, Paths) ->
-    find_first(Names, Paths, 'is_dir', Names);
-find_first('file', Names, Paths) ->
-    find_first(Names, Paths, 'is_regular', Names);
+find_first(any, Names, Paths) ->
+    find_first(Names, Paths, is_file, Names);
+find_first(dir, Names, Paths) ->
+    find_first(Names, Paths, is_dir, Names);
+find_first(file, Names, Paths) ->
+    find_first(Names, Paths, is_regular, Names);
 find_first(Type, Names, Paths) ->
-    erlang:error('badarg', [Type, Names, Paths]).
+    erlang:error(badarg, [Type, Names, Paths]).
 
 -spec format_error(Error :: term()) -> iolist().
 %%
@@ -303,23 +302,23 @@ find_first(Type, Names, Paths) ->
 %%
 format_error(Error) when erlang:is_list(Error) ->
     Error;
-format_error('app_undefined') ->
+format_error(app_undefined) ->
     "No top-level application defined";
-format_error('copyright_dirty') ->
+format_error(copyright_dirty) ->
     "Multiple or non-Basho copyrights, adjust manually";
-format_error('deps_mismatch') ->
+format_error(deps_mismatch) ->
     "Static and calculated dependencies differ";
-format_error('overwrite_blocked') ->
+format_error(overwrite_blocked) ->
     "Overwrite disabled by BRT attribute";
-format_error('repo_fail') ->
+format_error(repo_fail) ->
     "Repository operation failed";
 format_error({?MODULE, What}) ->
     format_error(What);
-format_error({'error', What}) ->
+format_error({error, What}) ->
     format_error(What);
 format_error({Atom, What}) when erlang:is_atom(Atom) ->
-    case erlang:function_exported(Atom, 'format_error', 1) of
-        'true' ->
+    case erlang:function_exported(Atom, format_error, 1) of
+        true ->
             Atom:format_error(What);
         _ ->
             % What *should* be a filesystem path, and Atom is the error.
@@ -335,28 +334,28 @@ format_error(Error) ->
 %% If the key is not found an empty list is returned.
 %% If Key exists as a standalone element in Terms, or is the first element of
 %% a tuple whose size is not exactly two or whose second element is not a
-%% list, a 'badarg' error is raised.
+%% list, a `badarg' error is raised.
 %%
 get_key_list(Key, Terms) ->
     case get_key_tuple(Key, Terms) of
-        'undefined' ->
+        undefined ->
             [];
         {_Key, List} when erlang:is_list(List) ->
             List;
         _ ->
-            erlang:error('badarg', [Key, Terms])
+            erlang:error(badarg, [Key, Terms])
     end.
 
--spec get_key_tuple(Key :: term(), Terms :: list()) -> 'undefined' | tuple().
+-spec get_key_tuple(Key :: term(), Terms :: list()) -> undefined | tuple().
 %%
 %% @doc Returns the tuple whose first element is Key in Terms.
 %%
-%% If the key is not found 'undefined' is returned.
-%% This is roughly analogous to lists:keyfind(Key, 1, Terms) except that if Key
-%% exists as a standalone element in Terms a 'badarg' error is raised.
+%% If the key is not found `undefined' is returned.
+%% This is roughly analogous to `lists:keyfind(Key, 1, Terms)' except that if
+%% Key exists as a standalone element in Terms a `badarg' error is raised.
 %%
 get_key_tuple(Key, [Key | _] = Terms) ->
-    erlang:error('badarg', [Key, Terms]);
+    erlang:error(badarg, [Key, Terms]);
 get_key_tuple(Key, [Term | _])
         when erlang:is_tuple(Term)
         andalso erlang:tuple_size(Term) >= 1
@@ -365,24 +364,24 @@ get_key_tuple(Key, [Term | _])
 get_key_tuple(Key, [_ | Terms]) ->
     get_key_tuple(Key, Terms);
 get_key_tuple(_, []) ->
-    'undefined'.
+    undefined.
 
--spec get_key_value(Key :: term(), Terms :: list()) -> 'undefined' | term().
+-spec get_key_value(Key :: term(), Terms :: list()) -> undefined | term().
 %%
 %% @doc Returns the value associated with the specified Key in Terms.
 %%
-%% If the key is not found 'undefined' is returned.
+%% If the key is not found `undefined' is returned.
 %% If Key exists as a standalone element in Terms, or is the first element of
-%% a tuple whose size is not exactly two, a 'badarg' error is raised.
+%% a tuple whose size is not exactly two, a `badarg' error is raised.
 %%
 get_key_value(Key, Terms) ->
     case get_key_tuple(Key, Terms) of
-        'undefined' ->
-            'undefined';
+        undefined ->
+            undefined;
         {_Key, Value} ->
             Value;
         _ ->
-            erlang:error('badarg', [Key, Terms])
+            erlang:error(badarg, [Key, Terms])
     end.
 
 -spec is_app_dir(Dir :: fs_path()) -> boolean().
@@ -406,16 +405,16 @@ is_app_dir(Dir) ->
 %%  lists:member(Key, Terms) orelse lists:keymember(Key, 1, Terms).
 %%
 is_list_key(Key, [Key | _]) ->
-    'true';
+    true;
 is_list_key(Key, [Term | _])
         when erlang:is_tuple(Term)
         andalso erlang:tuple_size(Term) >= 1
         andalso erlang:element(1, Term) =:= Key ->
-    'true';
+    true;
 is_list_key(Key, [_ | Terms]) ->
     is_list_key(Key, Terms);
 is_list_key(_, []) ->
-    'false'.
+    false.
 
 -spec is_min_version(
         Required :: [non_neg_integer()],
@@ -425,15 +424,15 @@ is_list_key(_, []) ->
 %% @doc Reports whether Version is logically >= Required.
 %%
 %% Version may be any term to accommodate version parsing errors, but the
-%% function returns 'false' if it is anything other than a list of non-negative
+%% function returns `false' if it is anything other than a list of non-negative
 %% integers.
 %%
 is_min_version([], []) ->
-    'true';
+    true;
 is_min_version([], [Vsn | _]) when erlang:is_integer(Vsn) andalso Vsn >= 0 ->
-    'true';
+    true;
 is_min_version([_|_], []) ->
-    'false';
+    false;
 is_min_version([N | Req], [N | Vsn]) when erlang:is_integer(N) andalso N >= 0 ->
     is_min_version(Req, Vsn);
 is_min_version([Req | _], [Vsn | _])
@@ -441,7 +440,7 @@ is_min_version([Req | _], [Vsn | _])
         andalso erlang:is_integer(Vsn) andalso Vsn >= 0 ->
     Vsn > Req;
 is_min_version(_, _) ->
-    'false'.
+    false.
 
 -spec list_modules(ModPrefix :: string()) -> [module()] | err_result().
 %%
@@ -453,8 +452,8 @@ is_min_version(_, _) ->
 -ifdef(BRT_ESCRIPT_IO_MOD_KEY).
 list_modules(ModPrefix) ->
     case erlang:get(?BRT_ESCRIPT_IO_MOD_KEY) of
-        'undefined' ->
-            ObjDir  = brt_dir('obj'),
+        undefined ->
+            ObjDir  = brt_dir(obj),
             ObjExt  = code:objfile_extension(),
             Pattern = lists:flatten([ModPrefix, $*, ObjExt]),
             Objs    = filelib:wildcard(Pattern, ObjDir),
@@ -464,7 +463,7 @@ list_modules(ModPrefix) ->
     end.
 -else.
 list_modules(ModPrefix) ->
-    ObjDir  = brt_dir('obj'),
+    ObjDir  = brt_dir(obj),
     ObjExt  = code:objfile_extension(),
     Pattern = lists:flatten([ModPrefix, $*, ObjExt]),
     Objs    = filelib:wildcard(Pattern, ObjDir),
@@ -472,21 +471,21 @@ list_modules(ModPrefix) ->
 -endif.
 
 -spec read_app_file(Dir :: atom() | string(), FileName :: string())
-        -> {'ok', binary()} | err_result().
+        -> {ok, binary()} | err_result().
 %%
 %% @doc Return the contents of FileName in the specified application directory.
 %%
 -ifdef(BRT_ESCRIPT_IO_MOD_KEY).
 read_app_file(Dir, FileName) ->
     case erlang:get(?BRT_ESCRIPT_IO_MOD_KEY) of
-        'undefined' ->
-            file_operation('read_file', Dir, FileName);
+        undefined ->
+            file_operation(read_file, Dir, FileName);
         Mod ->
             Mod:consult_app_file(Dir, FileName)
     end.
 -else.
 read_app_file(Dir, FileName) ->
-    file_operation('read_file', Dir, FileName).
+    file_operation(read_file, Dir, FileName).
 -endif.
 
 -spec parse_version(Version :: string()) -> [non_neg_integer()] | err_result().
@@ -505,24 +504,24 @@ parse_version(VsnIn) ->
 to_atom(Term) when erlang:is_atom(Term) ->
     Term;
 to_atom(Term) when erlang:is_binary(Term) ->
-    erlang:binary_to_atom(Term, 'latin1');
+    erlang:binary_to_atom(Term, latin1);
 to_atom(Term) when erlang:is_list(Term) ->
     erlang:list_to_atom(lists:flatten(Term));
 to_atom(Term) ->
-    erlang:error('badarg', [Term]).
+    erlang:error(badarg, [Term]).
 
 -spec to_binary(Term :: atom() | binary() | [byte() | [byte()]]) -> binary().
 %%
 %% @doc Return Term as a binary.
 %%
 to_binary(Term) when erlang:is_atom(Term) ->
-    erlang:atom_to_binary(Term, 'latin1');
+    erlang:atom_to_binary(Term, latin1);
 to_binary(Term) when erlang:is_binary(Term) ->
     Term;
 to_binary(Term) when erlang:is_list(Term) ->
     erlang:list_to_binary(Term);
 to_binary(Term) ->
-    erlang:error('badarg', [Term]).
+    erlang:error(badarg, [Term]).
 
 -spec to_string(Term :: atom() | binary() | [char() | [char()]]) -> string().
 %%
@@ -534,24 +533,24 @@ to_string(Term) when erlang:is_binary(Term) ->
     erlang:binary_to_list(Term);
 to_string(Term) when erlang:is_list(Term) ->
     case io_lib:char_list(Term) of
-        'true' ->
+        true ->
             Term;
         _ ->
             case io_lib:deep_char_list(Term) of
-                'true' ->
+                true ->
                     lists:flatten(Term);
                 _ ->
                     % go the extra mile in case it's an iolist()
                     try
                         lists:flatten(io_lib:format("~s", [Term]))
                     catch
-                        'error':'badarg' ->
-                            erlang:error('badarg', [Term])
+                        error:badarg ->
+                            erlang:error(badarg, [Term])
                     end
             end
     end;
 to_string(Term) ->
-    erlang:error('badarg', [Term]).
+    erlang:error(badarg, [Term]).
 
 -spec version_string(Version :: [non_neg_integer()]) -> string().
 %%
@@ -560,7 +559,7 @@ to_string(Term) ->
 version_string([N | _] = Version) when erlang:is_integer(N) andalso N >= 0 ->
     string:join([erlang:integer_to_list(V) || V <- Version], ".");
 version_string(Arg) ->
-    erlang:error('badarg', [Arg]).
+    erlang:error(badarg, [Arg]).
 
 %% ===================================================================
 %% Internal
@@ -592,18 +591,18 @@ direct_path([], Result) ->
 
 -spec file_operation(
         Func :: atom(), Dir :: atom() | string(), FileName :: string())
-        -> {'ok', term()} | err_result().
+        -> {ok, term()} | err_result().
 %
 % Invoke file:Func(FullFilePath) on an application file.
 %
 file_operation(Func, Dir, FileName) ->
     case brt_dir(Dir) of
-        {'error', _} = Err ->
+        {error, _} = Err ->
             Err;
         Path ->
             File = filename:join(Path, FileName),
             case file:Func(File) of
-                {'error', What} ->
+                {error, What} ->
                     file_error(File, What);
                 Result ->
                     Result
@@ -613,16 +612,16 @@ file_operation(Func, Dir, FileName) ->
 -spec find_first(
         Names       :: [fs_path()],
         Paths       :: [fs_path()],
-        Func        :: 'is_dir' | 'is_file' | 'is_regular',
+        Func        :: is_dir | is_file | is_regular,
         AllNames    :: [fs_path()])
-        -> fs_path() | 'false'.
+        -> fs_path() | false.
 %
 % Apply Func to each of Names relative to each of Paths until one is found.
 %
 find_first([Name | Names], [Path | _] = Paths, Func, AllNames) ->
     Elem = filename:absname(Name, Path),
     case filelib:Func(Elem) of
-        'true' ->
+        true ->
             Elem;
         _ ->
             find_first(Names, Paths, Func, AllNames)
@@ -630,7 +629,7 @@ find_first([Name | Names], [Path | _] = Paths, Func, AllNames) ->
 find_first([], [_ | Paths], Func, Names) ->
     find_first(Names, Paths, Func, Names);
 find_first(_, [], _, _) ->
-    'false'.
+    false.
 
 -spec parse_version_str(VsnIn :: [char()], Result :: [non_neg_integer()])
         -> [non_neg_integer()] | err_result().
@@ -652,7 +651,7 @@ parse_version_str("+build." ++ [Ch | Rest], [_|_] = Result)
 parse_version_str(_, [_|_] = Result) ->
     Result;
 parse_version_str(VsnIn, _) ->
-    {'error', {?MODULE, {'not_version_string', VsnIn}}}.
+    {error, {?MODULE, {not_version_string, VsnIn}}}.
 
 %
 % Everything below here implements brt_dir/1, and is VERY tightly coupled.
@@ -662,20 +661,20 @@ parse_version_str(VsnIn, _) ->
 
 -spec brt_dir(atom() | string()) -> fs_path() | err_result().
 
-brt_dir('app' = What) ->
+brt_dir(app = What) ->
     Key = {?MODULE, What},
     case erlang:get(Key) of
-        'undefined' ->
+        undefined ->
             ADir = case code:lib_dir(?APP_NAME_ATOM) of
                 [_|_] = Lib ->
                     case filelib:is_dir(Lib) of
-                        'true' ->
+                        true ->
                             Lib;
                         _ ->
-                            filename:dirname(brt_dir('this'))
+                            filename:dirname(brt_dir(this))
                     end;
                 _ ->
-                    filename:dirname(brt_dir('this'))
+                    filename:dirname(brt_dir(this))
             end,
             erlang:put(Key, ADir),
             ADir;
@@ -684,22 +683,22 @@ brt_dir('app' = What) ->
     end;
 
 brt_dir("ebin") ->
-    brt_dir('ebin');
+    brt_dir(ebin);
 
-brt_dir('ebin' = What) ->
+brt_dir(ebin = What) ->
     Key = {?MODULE, What},
     case erlang:get(Key) of
-        'undefined' ->
+        undefined ->
             EBin = case code:lib_dir(?APP_NAME_ATOM, What) of
                 [_|_] = Lib ->
                     case filelib:is_dir(Lib) of
-                        'true' ->
+                        true ->
                             Lib;
                         _ ->
-                            brt_dir('this')
+                            brt_dir(this)
                     end;
                 _ ->
-                    brt_dir('this')
+                    brt_dir(this)
             end,
             erlang:put(Key, EBin),
             EBin;
@@ -707,20 +706,20 @@ brt_dir('ebin' = What) ->
             Val
     end;
 
-brt_dir('obj') ->
-    brt_dir('ebin');
+brt_dir(obj) ->
+    brt_dir(ebin);
 
 brt_dir("priv") ->
-    brt_dir('priv');
+    brt_dir(priv);
 
-brt_dir('priv' = What) ->
+brt_dir(priv = What) ->
     Key = {?MODULE, What},
     case erlang:get(Key) of
-        'undefined' ->
+        undefined ->
             PDir = case code:priv_dir(?APP_NAME_ATOM) of
                 [_|_] = Lib ->
                     case filelib:is_dir(Lib) of
-                        'true' ->
+                        true ->
                             Lib;
                         _ ->
                             find_priv_dir()
@@ -734,10 +733,10 @@ brt_dir('priv' = What) ->
             Val
     end;
 
-brt_dir('this' = What) ->
+brt_dir(this = What) ->
     Key = {?MODULE, What},
     case erlang:get(Key) of
-        'undefined' ->
+        undefined ->
             ODir = filename:dirname(code:which(?MODULE)),
             erlang:put(Key, ODir),
             ODir;
@@ -746,16 +745,16 @@ brt_dir('this' = What) ->
     end;
 
 brt_dir(Dir) when erlang:is_list(Dir) ->
-    Path = filename:join(brt_dir('app'), lists:flatten(Dir)),
+    Path = filename:join(brt_dir(app), lists:flatten(Dir)),
     case filelib:is_dir(Path) of
-        'true' ->
+        true ->
             Path;
         _ ->
             case filelib:is_file(Path) of
-                'true' ->
-                    {'error', {'enotdir', Path}};
+                true ->
+                    {error, {enotdir, Path}};
                 _ ->
-                    {'error', {'enoent', Path}}
+                    {error, {enoent, Path}}
             end
     end;
 
@@ -763,19 +762,19 @@ brt_dir(Dir) when erlang:is_atom(Dir) ->
     brt_dir(erlang:atom_to_list(Dir));
 
 brt_dir(Arg) ->
-    erlang:error('badarg', [Arg]).
+    erlang:error(badarg, [Arg]).
 
 -spec find_priv_dir() -> fs_path() | err_result().
 
 find_priv_dir() ->
-    find_priv_dir(['app', 'obj', 'this']).
+    find_priv_dir([app, obj, this]).
 
 -spec find_priv_dir([atom()]) -> fs_path() | err_result().
 
-find_priv_dir(['app' = Parent | More]) ->
+find_priv_dir([app = Parent | More]) ->
     Dir = filename:join(brt_dir(Parent), "priv"),
     case filelib:is_dir(Dir) of
-        'true' ->
+        true ->
             Dir;
         _ ->
             find_priv_dir(More)
@@ -784,12 +783,12 @@ find_priv_dir(['app' = Parent | More]) ->
 find_priv_dir([Sibling | More]) ->
     Dir = filename:join(filename:dirname(brt_dir(Sibling)), "priv"),
     case filelib:is_dir(Dir) of
-        'true' ->
+        true ->
             Dir;
         _ ->
             find_priv_dir(More)
     end;
 
 find_priv_dir([]) ->
-    {'error', "Application private directory not found"}.
+    {error, "Application private directory not found"}.
 

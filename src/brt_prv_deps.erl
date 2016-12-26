@@ -19,12 +19,12 @@
 %% -------------------------------------------------------------------
 
 %%
-%% @doc BRT provider for the 'brt-deps' command.
+%% @doc BRT provider for the `brt-deps' command.
 %%
 -module(brt_prv_deps).
 
 %% provider behavior
--ifndef(brt_validate).
+-ifndef(BRT_VALIDATE).
 -behaviour(brt).
 -endif.
 -export([do/1, format_error/1, init/1, spec/0]).
@@ -33,16 +33,16 @@
 
 -define(PROVIDER_ATOM,  'brt-deps').
 -define(PROVIDER_STR,   "brt-deps").
--define(PROVIDER_DEPS,  ['compile']).
+-define(PROVIDER_DEPS,  [compile]).
 -define(PROVIDER_OPTS,  [
-    {'check', $c, "check", 'boolean',
+    {check, $c, "check", boolean,
         "Verify that the true dependencies match the rebar configuration."},
-    {'list', $l, "list", 'boolean',
+    {list, $l, "list", boolean,
         "List the full dependency specifications."},
-    {'short', $s, "short", 'boolean',
+    {short, $s, "short", boolean,
         "List the dependency names [default]."},
     ?BRT_RECURSIVE_OPT,
-    {'rebar2', $2, "rebar2", 'boolean',
+    {rebar2, $2, "rebar2", boolean,
         "Write dependencies in Rebar2 format."
         "Only meaningful in list (-l|--list) mode."},
     ?BRT_VERBOSITY_OPTS
@@ -52,24 +52,24 @@
 %% Behavior
 %% ===================================================================
 
--spec init(State :: brt:rebar_state()) -> {'ok', brt:rebar_state()}.
+-spec init(State :: brt:rebar_state()) -> {ok, brt:rebar_state()}.
 %%
 %% @doc Adds the command provider to rebar's state.
 %%
 init(State) ->
     Provider = providers:create(spec()),
-    {'ok', rebar_state:add_provider(State, Provider)}.
+    {ok, rebar_state:add_provider(State, Provider)}.
 
 -spec do(State :: brt:rebar_state())
-        -> {'ok', brt:rebar_state()} | brt:prv_error().
+        -> {ok, brt:rebar_state()} | brt:prv_error().
 %%
 %% @doc Execute the provider command logic.
 %%
 do(State) ->
     {Opts, _} = rebar_state:command_parsed_args(State),
-    ConfigVsn = case proplists:get_value('rebar2', Opts) of
-        'true' ->
-            brt_rebar:config_format('rebar2');
+    ConfigVsn = case proplists:get_value(rebar2, Opts) of
+        true ->
+            brt_rebar:config_format(rebar2);
         _ ->
             brt_rebar:config_format()
     end,
@@ -90,14 +90,14 @@ format_error(Error) ->
 %%
 spec() ->
     [
-        {'name',        ?PROVIDER_ATOM},
-        {'module',      ?MODULE},
-        {'bare',        'true'},
-        {'deps',        ?PROVIDER_DEPS},
-        {'example',     "rebar3 " ?PROVIDER_STR},
-        {'short_desc',  short_desc()},
-        {'desc',        long_desc()},
-        {'opts',        ?PROVIDER_OPTS}
+        {name,          ?PROVIDER_ATOM},
+        {module,        ?MODULE},
+        {bare,          true},
+        {deps,          ?PROVIDER_DEPS},
+        {example,       "rebar3 " ?PROVIDER_STR},
+        {short_desc,    short_desc()},
+        {desc,          long_desc()},
+        {opts,          ?PROVIDER_OPTS}
     ].
 
 %%====================================================================
@@ -120,32 +120,33 @@ long_desc() ->
 
 -spec handle_command(
     Opts :: [proplists:property()], State :: brt:rebar_state())
-        -> {'ok', brt:rebar_state()} | brt:prv_error().
+        -> {ok, brt:rebar_state()} | brt:prv_error().
 handle_command(Opts, State) ->
+    ?LOG_INFO("Calculating dependencies...", []),
     case brt_xref:new(State) of
-        {'ok', XRef} ->
-            Targets = case proplists:get_value('recurse', Opts) of
-                'true' ->
-                    'all';
+        {ok, XRef} ->
+            Targets = case proplists:get_value(recurse, Opts) of
+                true ->
+                    all;
                 _ ->
                     brt_rebar:prj_app_specs(State)
             end,
-            Result = case proplists:get_value('check', Opts) of
-                'true' ->
-                    CCtx = {XRef, 'true'},
+            Result = case proplists:get_value(check, Opts) of
+                true ->
+                    CCtx = {XRef, true},
                     case brt_rebar:fold(Targets, fun check/3, CCtx, State) of
-                        {'ok', {_, 'true'}} ->
-                            {'ok', State};
-                        {'ok', _} ->
-                            {'error', {?MODULE, 'deps_mismatch'}};
+                        {ok, {_, true}} ->
+                            {ok, State};
+                        {ok, _} ->
+                            {error, {?MODULE, deps_mismatch}};
                         CErr ->
                             CErr
                     end;
                 _ ->
-                    DCtx = {XRef, proplists:get_value('list', Opts, 'false')},
+                    DCtx = {XRef, proplists:get_value(list, Opts, false)},
                     case brt_rebar:fold(Targets, fun display/3, DCtx, State) of
-                        {'ok', _} ->
-                            {'ok', State};
+                        {ok, _} ->
+                            {ok, State};
                         DErr ->
                             DErr
                     end
@@ -160,23 +161,23 @@ handle_command(Opts, State) ->
         App     :: brt:app_spec(),
         Context :: context(),
         State   :: brt:rebar_state())
-        -> {'ok', context()} | brt:prv_error().
+        -> {ok, context()} | brt:prv_error().
 
 check({Name, _, _} = App, {XRef, _} = Context, State) ->
-    rebar_api:debug("~s:check/3: App = ~p", [?MODULE, App]),
+    ?LOG_DEBUG("~s:check/3: App = ~p", [?MODULE, App]),
     case brt_xref:app_deps(XRef, Name) of
-        {'ok', XrefApps} ->
+        {ok, XrefApps} ->
             AppInfo = brt_rebar:app_info(Name, State),
             ConfDeps = lists:sort([brt:to_atom(R)
                 || R <- rebar_app_info:deps(AppInfo)]),
             CalcDeps = lists:sort(XrefApps -- [Name]),
             case ConfDeps =:= CalcDeps of
-                'true' ->
-                    rebar_api:info("Dependencies match: ~s", [Name]),
-                    {'ok', Context};
+                true ->
+                    ?LOG_INFO("Dependencies match: ~s", [Name]),
+                    {ok, Context};
                 _ ->
-                    rebar_api:warn("Dependency mismatch: ~s", [Name]),
-                    {'ok', {XRef, 'false'}}
+                    ?LOG_WARN("Dependency mismatch: ~s", [Name]),
+                    {ok, {XRef, false}}
             end;
         Error ->
             Error
@@ -186,17 +187,17 @@ check({Name, _, _} = App, {XRef, _} = Context, State) ->
         App     :: brt:app_spec(),
         Context :: context(),
         State   :: brt:rebar_state())
-        -> {'ok', context()} | brt:prv_error().
+        -> {ok, context()} | brt:prv_error().
 
 display({Name, _, _} = App, {XRef, Long} = Context, _State) ->
-    rebar_api:debug("~s:display/3: App = ~p", [?MODULE, App]),
+    ?LOG_DEBUG("~s:display/3: App = ~p", [?MODULE, App]),
     case brt_xref:app_deps(XRef, Name) of
-        {'ok', XrefApps} ->
+        {ok, XrefApps} ->
             Prod = XrefApps -- [Name],
             Test = brt_fudge:test_deps(App) -- XrefApps,
             io:format("~s:~n", [Name]),
             display_deps(Long, 1, Prod, Test),
-            {'ok', Context};
+            {ok, Context};
         Error ->
             Error
     end.
@@ -206,7 +207,7 @@ display({Name, _, _} = App, {XRef, Long} = Context, _State) ->
         Indent  :: non_neg_integer() | iolist(),
         Prod    :: [brt:app_name()],
         Test    :: [brt:app_name()])
-        -> 'ok'.
+        -> ok.
 
 display_deps(Long, Indent, Prod, []) ->
     display_deps(Long, brt_io:inc_indent(Indent), Prod);
@@ -223,12 +224,12 @@ display_deps(Long, Level, Prod, Test) ->
         Long    :: boolean(),
         Indent  :: iolist(),
         Apps    :: [brt:app_name()])
-        -> 'ok'.
+        -> ok.
 
-display_deps('true', Indent, Apps) ->
-    brt_io:write_deps('standard_io', Indent, Apps);
+display_deps(true, Indent, Apps) ->
+    brt_io:write_deps(standard_io, Indent, Apps);
 
-display_deps('false', Indent, Apps) ->
-    [io:format("~s'~s'~n", [Indent, A]) || A <- Apps],
-    'ok'.
+display_deps(false, Indent, Apps) ->
+    [io:format("~s~p~n", [Indent, A]) || A <- Apps],
+    ok.
 
