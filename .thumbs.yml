@@ -1,0 +1,14 @@
+minimum_reviewers: 1
+merge: true
+merge_method: merge
+build_steps:
+  - rebar3 clean --all
+  - rebar3 compile
+  - rebar3 as prod compile
+  - rebar3 as check xref
+  # for OTP < 18 need the check_old profile added
+  - rebar3 as check,check_old dialyzer
+  - rebar3 eunit
+  - rebar3 edoc
+org_mode: true
+timeout: 1200

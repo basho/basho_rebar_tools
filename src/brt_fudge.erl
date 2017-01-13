@@ -40,7 +40,7 @@
 % for now just look for the pattern we use for cuttlefish schema files and
 % assume we actually test them.
 %
-% Proper results will be obtained by compiling with the 'prod' and 'test'
+% Proper results will be obtained by compiling with the `prod' and `test'
 % profiles, running xref on both, and diffing the results to come up the apps
 % that are used only in test mode.
 % That can be handled with some some plugin magic to swap profiles on the fly,
@@ -52,12 +52,12 @@ test_deps({Name, Path, _}) ->
 test_deps(Path) when erlang:is_list(Path) ->
     Func = fun(File) ->
         case file:consult(File) of
-            {'ok', [{'application', App, [_|_]}]} ->
+            {ok, [{application, App, [_|_]}]} ->
                 App;
-            {'ok', _} ->
-                erlang:error('app_malformed', [File]);
-            {'error', What} ->
-                {'error', Error} = brt:file_error(File, What),
+            {ok, _} ->
+                erlang:error(app_malformed, [File]);
+            {error, What} ->
+                {error, Error} = brt:file_error(File, What),
                 erlang:error(Error)
         end
     end,
@@ -70,7 +70,7 @@ test_deps(Path) when erlang:is_list(Path) ->
             Name = erlang:list_to_atom(erlang:hd(
                 string:tokens(filename:basename(Path), "-"))),
             case lists:member(Name, Apps) of
-                'true' ->
+                true ->
                     Apps;
                 _ ->
                     [Name | Apps]
@@ -85,13 +85,13 @@ test_deps(State) when ?is_rebar_state(State) ->
 
 -spec test_deps(Names :: [atom() | binary()], Path :: brt:fs_path())
         -> [brt:app_name()].
-test_deps(['cuttlefish' | _], _) ->
+test_deps([cuttlefish | _], _) ->
     [];
 test_deps([Name | Names], Path) ->
     Schema = filename:join([Path, "priv", brt:to_string(Name) ++ ".schema"]),
     case filelib:is_regular(Schema) of
-        'true' ->
-            ['cuttlefish'];
+        true ->
+            [cuttlefish];
         _ ->
             test_deps(Names, Path)
     end;

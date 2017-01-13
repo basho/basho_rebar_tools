@@ -19,9 +19,9 @@
 %% -------------------------------------------------------------------
 
 %%
-%% @doc BRT provider for the `brt-info' command.
+%% @doc BRT provider for the `brt-up' command.
 %%
--module(brt_prv_info).
+-module(brt_prv_up).
 
 %% provider behavior
 -ifndef(BRT_VALIDATE).
@@ -31,10 +31,14 @@
 
 -include("brt.hrl").
 
--define(PROVIDER_ATOM,  'brt-info').
--define(PROVIDER_STR,   "brt-info").
--define(PROVIDER_DEPS,  []).
--define(PROVIDER_OPTS,  []).
+-define(PROVIDER_ATOM,  'brt-up').
+-define(PROVIDER_STR,   "brt-up").
+-define(PROVIDER_DEPS,  [lock]).
+-define(PROVIDER_OPTS,  [
+    ?BRT_RECURSIVE_OPT,
+    ?BRT_CHECKOUTS_OPT,
+    ?BRT_VERBOSITY_OPTS
+]).
 
 %% ===================================================================
 %% Behavior
@@ -50,14 +54,14 @@ init(State) ->
 
 -spec do(State :: brt:rebar_state()) -> {ok, brt:rebar_state()}.
 %%
-%% @doc Display provider information.
+%% @doc Execute the provider command logic.
 %%
 do(State) ->
-    {brt_io:write_info(standard_io), State}.
+    {ok, State}.
 
 -spec format_error(Error :: term()) -> iolist().
 %%
-%% @doc Placeholder to fill out the `provider' API, should never be called.
+%% @doc Format errors for display.
 %%
 format_error(Error) ->
     brt:format_error(Error).
@@ -84,11 +88,13 @@ spec() ->
 
 -spec short_desc() -> string().
 short_desc() ->
-    "Information about " ?APP_NAME_DISPLAY.
+    "Manage upstream repositories.".
 
 -spec long_desc() -> string().
 long_desc() ->
-    short_desc().
+    short_desc() ++ "\n"
+    "\n"
+    "We have access to the GitHub API, what do we want to do with it?\n".
 
 %%====================================================================
 %% Internal

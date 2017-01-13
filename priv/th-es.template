@@ -1,0 +1,2 @@
+{description,   "Default Thumbs file, without Common Test, with EScript."}.
+{file,          "defaults/thumbs-es.yml", ".thumbs.yml"}.

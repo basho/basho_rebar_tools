@@ -1,0 +1,3 @@
+{description,   "Default .gitignore file for EScript."}.
+{template,      "defaults/gitignore-escript", ".gitignore"}.
+{variables,     [{name, "escript-file-name", "Name of the generated EScript."}]}.

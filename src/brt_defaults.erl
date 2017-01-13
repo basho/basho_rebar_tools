@@ -1,6 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2016 Basho Technologies, Inc.
+%% Copyright (c) 2016-2017 Basho Technologies, Inc.
 %%
 %% This file is provided to you under the Apache License,
 %% Version 2.0 (the "License"); you may not use this file
@@ -30,11 +30,18 @@
     editor_makefile/0,
     file_data/1,
     file_terms/1,
+    gitignore/1,
     makefile/2,
     rebar_config/4
 ]).
 
 -include("brt.hrl").
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
+-define(DEFAULTS_DIR,           "defaults").
+-define(DEFAULT_REBAR_CONFIG,   "rebar3.config").
 
 % Module constant instead or recreating it on the fly each time.
 -define(COMMENT_DIVIDER,
@@ -44,16 +51,16 @@
 %% API
 %% ===================================================================
 
--spec comment_line(Prefix :: string(), Line :: 'blank' | 'divider' | iolist())
+-spec comment_line(Prefix :: string(), Line :: blank | divider | iolist())
         -> iolist().
 %%
 %% @doc Returns a line comment with specified text and trailing newline.
 %%
 comment_line(Prefix, []) ->
-    comment_line(Prefix, 'blank');
-comment_line(Prefix, 'blank') ->
+    comment_line(Prefix, blank);
+comment_line(Prefix, blank) ->
     [Prefix, $\n];
-comment_line(Prefix, 'divider') ->
+comment_line(Prefix, divider) ->
     comment_line(Prefix, ?COMMENT_DIVIDER);
 comment_line(Prefix, Line) ->
     [Prefix, $\s, Line, $\n].
@@ -63,7 +70,7 @@ comment_line(Prefix, Line) ->
 %% @doc Returns a Basho copyright header comment for the current year.
 %%
 copyright(Prefix) ->
-    make_copyright(Prefix, copyright_year_string('current')).
+    make_copyright(Prefix, copyright_year_string(current)).
 
 -spec copyright(Prefix :: string(), StartYear :: brt:basho_year())
         -> iolist().
@@ -71,7 +78,7 @@ copyright(Prefix) ->
 %% @doc Returns a Basho copyright header comment for starting-current year.
 %%
 copyright(Prefix, StartYear) ->
-    make_copyright(Prefix, copyright_year_string(StartYear, 'current')).
+    make_copyright(Prefix, copyright_year_string(StartYear, current)).
 
 -spec current_year() -> brt:year1970().
 %%
@@ -81,7 +88,7 @@ current_year() ->
     {{Year, _, _}, _} = calendar:local_time(),
     Year.
 
--spec file_data(FileName :: brt:fs_path()) -> binary().
+-spec file_data(FileName :: brt:fs_path()) -> binary() | none().
 %%
 %% @doc Returns the default data for the specified FileName.
 %%
@@ -89,11 +96,11 @@ current_year() ->
 %% private directory.
 %%
 file_data(FileName) ->
-    File = ["default." | FileName],
-    case brt:read_app_file('priv', File) of
-        {'ok', Bin} ->
+    File = filename:join(?DEFAULTS_DIR, FileName),
+    case brt:read_app_file(priv, File) of
+        {ok, Bin} ->
             Bin;
-        {'error', What} ->
+        {error, What} ->
             erlang:error(What)
     end.
 
@@ -105,11 +112,11 @@ file_data(FileName) ->
 %% private directory.
 %%
 file_terms(FileName) ->
-    File = ["default." | FileName],
-    case brt:consult_app_file('priv', File) of
-        {'ok', Terms} ->
+    File = filename:join(?DEFAULTS_DIR, FileName),
+    case brt:consult_app_file(priv, File) of
+        {ok, Terms} ->
             Terms;
-        {'error', What} ->
+        {error, What} ->
             erlang:error(What)
     end.
 
@@ -132,6 +139,19 @@ editor_erlang() ->
 editor_makefile() ->
     [].
 
+-spec gitignore(Native :: boolean()) -> iolist().
+%%
+%% @doc Returns a Basho standard .gitignore body.
+%%
+%% If Native is `true' the file includes exclusions for NIF artifacts.
+%%
+%% Note that the result is binary data (bytes), NOT Unicode characters.
+%%
+gitignore(true) ->
+    [file_data("gitignore-native")];
+gitignore(_) ->
+    file_data("gitignore").
+
 -spec makefile(
         ProdDeps    :: [brt:app_name() | brt:dep_spec()],
         TestDeps    :: [brt:app_name() | brt:dep_spec()])
@@ -145,7 +165,7 @@ editor_makefile() ->
 %%
 makefile(ProdDeps, TestDeps) ->
     brt_config:dep_makefile(ProdDeps ++ TestDeps,
-        unicode:characters_to_list(file_data("basho.mk"), 'utf8')).
+        unicode:characters_to_list(file_data("Makefile"), utf8)).
 
 -spec rebar_config(
         AppName     :: brt:app_name(),
@@ -156,49 +176,48 @@ makefile(ProdDeps, TestDeps) ->
 %%
 %% @doc Returns the Basho-standard rebar.config properties list.
 %%
-%% These are the standard terms used in Basho projects, including 'profiles'
-%% 'deps', and 'plugins'.
+%% These are the standard terms used in Basho projects, including `profiles'
+%% `deps', and `plugins'.
 %% This plugin doesn't need to be specified, it will always be included.
 %%
-%% Most non-global settings are in three main profiles: 'prod', 'check',
-%% and 'test'.
+%% Most non-global settings are in three main profiles: `prod', `check',
+%% and `test'.
 %% These profiles are structured to work with the standard Makefile targets.
 %%
 %% @see makefile/2
 %%
 rebar_config(AppName, ProdDeps, TestDeps, PluginDeps) ->
-    DefTerms = file_terms("rebar.config"),
-    BrtTerms = case brt:get_key_tuple(AppName,
-            brt:get_key_list('upstream', brt_config:config())) of
-        {_, URL} ->
-            BRT = lists:keystore('upstream', 1,
-                brt:get_key_list('brt', DefTerms), {'upstream', URL}),
-            lists:keystore('brt', 1, DefTerms, {'brt', BRT});
+    DefTerms = file_terms(?DEFAULT_REBAR_CONFIG),
+    CfgTerms = case brt:get_key_tuple(AppName,
+            brt:get_key_list(upstream, brt_config:config())) of
+        {_, Elems} ->
+            BRTUp = {brt_upstream, Elems},
+            lists:keystore(brt_upstream, 1, DefTerms, BRTUp);
         _ ->
             DefTerms
     end,
     %
     % Prior to Rebar3 there are no profiles, so there's no opportunity to
-    % override the 'no_debug_info' pseudo option.
+    % override the `no_debug_info' pseudo option.
     % If it can't be overridden, don't let it in in the first place.
     %
     Default = case brt_rebar:config_format() < 3 of
-        'true' ->
-            Opts  = brt:get_key_list('erl_opts', BrtTerms),
-            case lists:member('no_debug_info', Opts) of
-                'true' ->
-                    lists:keyreplace('erl_opts', 1, BrtTerms, {'erl_opts',
-                        lists:delete('no_debug_info', lists:usort(Opts))});
+        true ->
+            Opts  = brt:get_key_list(erl_opts, CfgTerms),
+            case lists:member(no_debug_info, Opts) of
+                true ->
+                    lists:keyreplace(erl_opts, 1, CfgTerms, {erl_opts,
+                        lists:delete(no_debug_info, lists:usort(Opts))});
                 _ ->
-                    BrtTerms
+                    CfgTerms
             end;
         _ ->
-            BrtTerms
+            CfgTerms
     end,
     AppDeps = lists:foldl(
         fun(AAppOrDep, AResult) ->
             case brt:dep_list_member(AAppOrDep, AResult) of
-                'true' ->
+                true ->
                     AResult;
                 _ ->
                     [brt_config:pkg_dep(AAppOrDep) | AResult]
@@ -206,33 +225,28 @@ rebar_config(AppName, ProdDeps, TestDeps, PluginDeps) ->
         end, [], ProdDeps),
     TstDeps = lists:foldl(
         fun(TAppOrDep, TResult) ->
-            % nest the tests because dialyzer can't grok them orelse'd together
-            case brt:dep_list_member(TAppOrDep, TResult) of
-                'false' ->
-                    case brt:dep_list_member(TAppOrDep, AppDeps) of
-                        'false' ->
-                            [brt_config:pkg_dep(TAppOrDep) | TResult];
-                        _ ->
-                            TResult
-                    end;
+            case brt:dep_list_member(TAppOrDep, TResult)
+                    orelse brt:dep_list_member(TAppOrDep, AppDeps) of
+                true ->
+                    TResult;
                 _ ->
-                    TResult
+                    [brt_config:pkg_dep(TAppOrDep) | TResult]
             end
         end, [], TestDeps),
     Plugins = brt_config:dep_plugins(TstDeps ++ AppDeps, PluginDeps),
     ErlOpts = brt_config:dep_erl_opts(AppDeps,
-                brt:get_key_list('erl_opts', Default)),
+                brt:get_key_list(erl_opts, Default)),
     Config1 = update_profiles(Default, AppDeps, TstDeps, Plugins),
-    Config2 = lists:keystore('plugins', 1, Config1, {'plugins', Plugins}),
-    Config3 = lists:keystore('erl_opts', 1, Config2, {'erl_opts', ErlOpts}),
-    lists:keystore('deps', 1, Config3, {'deps', lists:sort(AppDeps)}).
+    Config2 = lists:keystore(plugins, 1, Config1, {plugins, Plugins}),
+    Config3 = lists:keystore(erl_opts, 1, Config2, {erl_opts, ErlOpts}),
+    lists:keystore(deps, 1, Config3, {deps, lists:sort(AppDeps)}).
 
 %% ===================================================================
 %% Internal
 %% ===================================================================
 
 -spec copyright_year_string(Year :: brt:basho_year()) -> iolist().
-copyright_year_string('current') ->
+copyright_year_string(current) ->
     erlang:integer_to_list(current_year());
 copyright_year_string(Year)
         when erlang:is_integer(Year) andalso Year >= ?BASHO_YEAR_MIN ->
@@ -240,9 +254,9 @@ copyright_year_string(Year)
 
 -spec copyright_year_string(
         First :: brt:basho_year(), Last :: brt:basho_year()) -> iolist().
-copyright_year_string('current', Year) ->
+copyright_year_string(current, Year) ->
     copyright_year_string(current_year(), Year);
-copyright_year_string(Year, 'current') ->
+copyright_year_string(Year, current) ->
     copyright_year_string(Year, current_year());
 copyright_year_string(Year, Year) ->
     copyright_year_string(Year);
@@ -256,25 +270,25 @@ copyright_year_string(First, Last)
 -spec make_copyright(Prefix :: string(), Years :: iolist()) -> iolist().
 make_copyright(Prefix, Years) ->
     Lines = [
-        'divider',
-        'blank',
+        divider,
+        blank,
         ["Copyright (c) ", Years, " Basho Technologies, Inc."],
-        'blank',
+        blank,
         "This file is provided to you under the Apache License,",
         "Version 2.0 (the \"License\"); you may not use this file",
         "except in compliance with the License.  You may obtain",
         "a copy of the License at",
-        'blank',
+        blank,
         "  http://www.apache.org/licenses/LICENSE-2.0",
-        'blank',
+        blank,
         "Unless required by applicable law or agreed to in writing,",
         "software distributed under the License is distributed on an",
         "\"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY",
         "KIND, either express or implied.  See the License for the",
         "specific language governing permissions and limitations",
         "under the License.",
-        'blank',
-        'divider'
+        blank,
+        divider
     ],
     [comment_line(Prefix, Line) || Line <- Lines].
 
@@ -286,10 +300,10 @@ make_copyright(Prefix, Years) ->
         -> brt:rebar_conf().
 
 update_profiles(Config, ProdDeps, TestDeps, PluginDeps) ->
-    ProfIn  = brt:get_key_list('profiles', Config),
+    ProfIn  = brt:get_key_list(profiles, Config),
     ProfOut = update_profiles(
         ProfIn, Config, ProdDeps, TestDeps, PluginDeps, []),
-    lists:keystore('profiles', 1, Config, {'profiles', ProfOut}).
+    lists:keystore(profiles, 1, Config, {profiles, ProfOut}).
 
 -spec update_profiles(
         Sects       :: [brt:rebar_sect()],
@@ -301,27 +315,27 @@ update_profiles(Config, ProdDeps, TestDeps, PluginDeps) ->
         -> [brt:rebar_sect()].
 
 update_profiles(
-        [{'check' = Sect, Terms0} | Sects],
+        [{check = Sect, Terms0} | Sects],
         Config, ProdDeps, TestDeps, PluginDeps, Result) ->
-    Over0   = brt:get_key_list('overrides', Terms0),
-    Over1   = [{'add', Pkg, [{'erl_opts', ['debug_info']}]}
+    Over0   = brt:get_key_list(overrides, Terms0),
+    Over1   = [{add, Pkg, [{erl_opts, [debug_info]}]}
         || Pkg <- lists:map(fun brt:dep_name/1, ProdDeps)],
     Over2   = lists:usort(Over0 ++ Over1),
-    Terms1  = lists:keystore('overrides', 1, Terms0, {'overrides', Over2}),
+    Terms1  = lists:keystore(overrides, 1, Terms0, {overrides, Over2}),
     Update  = {Sect, lists:keysort(1, Terms1)},
     update_profiles(
         Sects, Config, ProdDeps, TestDeps, PluginDeps, [Update | Result]);
 
 update_profiles(
-        [{'test' = Sect, Terms0} | Sects],
+        [{test = Sect, Terms0} | Sects],
         Config, ProdDeps, TestDeps, PluginDeps, Result) ->
-    Deps0   = brt:get_key_list('deps', Terms0),
+    Deps0   = brt:get_key_list(deps, Terms0),
     Deps1   = lists:keymerge(1, lists:sort(Deps0), lists:sort(TestDeps)),
-    Terms1  = lists:keystore('deps', 1, Terms0, {'deps', Deps1}),
-    Opts0   = brt:get_key_list('erl_opts', Terms1),
+    Terms1  = lists:keystore(deps, 1, Terms0, {deps, Deps1}),
+    Opts0   = brt:get_key_list(erl_opts, Terms1),
     Opts1   = brt_config:dep_erl_opts(TestDeps, Opts0),
-    Opts2   = lists:subtract(Opts1, brt:get_key_list('erl_opts', Config)),
-    Terms2  = lists:keystore('erl_opts', 1, Terms1, {'erl_opts', Opts2}),
+    Opts2   = lists:subtract(Opts1, brt:get_key_list(erl_opts, Config)),
+    Terms2  = lists:keystore(erl_opts, 1, Terms1, {erl_opts, Opts2}),
     Update  = {Sect, lists:keysort(1, Terms2)},
     update_profiles(
         Sects, Config, ProdDeps, TestDeps, PluginDeps, [Update | Result]);
@@ -336,3 +350,33 @@ update_profiles(
 update_profiles([], _, _, _, _, Result) ->
     lists:keysort(1, Result).
 
+%% ===================================================================
+%% Tests
+%% ===================================================================
+
+-ifdef(TEST).
+
+default_data_test() ->
+
+    % this file should always be found ...
+    ?assertMatch(Data when erlang:is_binary(Data),
+        file_data(?DEFAULT_REBAR_CONFIG)),
+
+    % ... and this one shouldn't
+    % error should be a descriptive string
+    ?assertError([_|_], file_data(?DEFAULT_REBAR_CONFIG ++ ".nonesuch")),
+
+    ok.
+
+default_terms_test() ->
+
+    % this file should always be found ...
+    ?assertMatch([_|_], file_terms(?DEFAULT_REBAR_CONFIG)),
+
+    % ... and this one shouldn't
+    % error should be a descriptive string
+    ?assertError([_|_], file_terms(?DEFAULT_REBAR_CONFIG ++ ".nonesuch")),
+
+    ok.
+
+-endif.
