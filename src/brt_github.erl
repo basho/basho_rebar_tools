@@ -1,6 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2016 Basho Technologies, Inc.
+%% Copyright (c) 2016-2017 Basho Technologies, Inc.
 %%
 %% This file is provided to you under the Apache License,
 %% Version 2.0 (the "License"); you may not use this file
@@ -19,9 +19,8 @@
 %% -------------------------------------------------------------------
 
 %%
-%% @doc This module performs operations using the GitHub HTTP API.
-%%
-%% @see https://developer.github.com/v3/
+%% @doc This module performs operations using the
+%%      <a href="http://developer.github.com/v3/">GitHub HTTP API</a>.
 %%
 -module(brt_github).
 

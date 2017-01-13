@@ -1,0 +1,2 @@
+{description,   "Default .gitignore file for Erlang with NIF(s)."}.
+{file,          "defaults/gitignore-native", ".gitignore"}.

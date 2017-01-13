@@ -1,4 +1,4 @@
-# rebar and tools
+# rebar
 *.crashdump
 /.cache/
 /.eqc*
@@ -9,7 +9,6 @@
 /_checkouts
 /deps
 /rebar.lock
-log/
 
 # work environments
 *.bak
@@ -30,7 +29,17 @@ log/
 erln8.config
 tmp/
 
-# Erlang artifacts
+# Erlang build/test artifacts
 *.app
 *.beam
+/doc/
 /ebin/
+log/
+
+# NIF build/test artifacts
+*.a
+*.o
+*.obj
+*.so
+*_x86_64
+/_work/

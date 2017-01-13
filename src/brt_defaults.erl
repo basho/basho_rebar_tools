@@ -1,6 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2016 Basho Technologies, Inc.
+%% Copyright (c) 2016-2017 Basho Technologies, Inc.
 %%
 %% This file is provided to you under the Apache License,
 %% Version 2.0 (the "License"); you may not use this file
@@ -36,6 +36,12 @@
 ]).
 
 -include("brt.hrl").
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
+-define(DEFAULTS_DIR,           "defaults").
+-define(DEFAULT_REBAR_CONFIG,   "rebar3.config").
 
 % Module constant instead or recreating it on the fly each time.
 -define(COMMENT_DIVIDER,
@@ -82,7 +88,7 @@ current_year() ->
     {{Year, _, _}, _} = calendar:local_time(),
     Year.
 
--spec file_data(FileName :: brt:fs_path()) -> binary().
+-spec file_data(FileName :: brt:fs_path()) -> binary() | none().
 %%
 %% @doc Returns the default data for the specified FileName.
 %%
@@ -90,7 +96,7 @@ current_year() ->
 %% private directory.
 %%
 file_data(FileName) ->
-    File = ["default." | FileName],
+    File = filename:join(?DEFAULTS_DIR, FileName),
     case brt:read_app_file(priv, File) of
         {ok, Bin} ->
             Bin;
@@ -106,7 +112,7 @@ file_data(FileName) ->
 %% private directory.
 %%
 file_terms(FileName) ->
-    File = ["default." | FileName],
+    File = filename:join(?DEFAULTS_DIR, FileName),
     case brt:consult_app_file(priv, File) of
         {ok, Terms} ->
             Terms;
@@ -142,7 +148,7 @@ editor_makefile() ->
 %% Note that the result is binary data (bytes), NOT Unicode characters.
 %%
 gitignore(true) ->
-    [file_data("gitignore"), file_data("gitignore.nif")];
+    [file_data("gitignore-native")];
 gitignore(_) ->
     file_data("gitignore").
 
@@ -159,7 +165,7 @@ gitignore(_) ->
 %%
 makefile(ProdDeps, TestDeps) ->
     brt_config:dep_makefile(ProdDeps ++ TestDeps,
-        unicode:characters_to_list(file_data("basho.mk"), utf8)).
+        unicode:characters_to_list(file_data("Makefile"), utf8)).
 
 -spec rebar_config(
         AppName     :: brt:app_name(),
@@ -181,13 +187,12 @@ makefile(ProdDeps, TestDeps) ->
 %% @see makefile/2
 %%
 rebar_config(AppName, ProdDeps, TestDeps, PluginDeps) ->
-    DefTerms = file_terms("rebar.config"),
-    BrtTerms = case brt:get_key_tuple(AppName,
+    DefTerms = file_terms(?DEFAULT_REBAR_CONFIG),
+    CfgTerms = case brt:get_key_tuple(AppName,
             brt:get_key_list(upstream, brt_config:config())) of
-        {_, URL} ->
-            BRT = lists:keystore(upstream, 1,
-                brt:get_key_list(brt, DefTerms), {upstream, URL}),
-            lists:keystore(brt, 1, DefTerms, {brt, BRT});
+        {_, Elems} ->
+            BRTUp = {brt_upstream, Elems},
+            lists:keystore(brt_upstream, 1, DefTerms, BRTUp);
         _ ->
             DefTerms
     end,
@@ -198,16 +203,16 @@ rebar_config(AppName, ProdDeps, TestDeps, PluginDeps) ->
     %
     Default = case brt_rebar:config_format() < 3 of
         true ->
-            Opts  = brt:get_key_list(erl_opts, BrtTerms),
+            Opts  = brt:get_key_list(erl_opts, CfgTerms),
             case lists:member(no_debug_info, Opts) of
                 true ->
-                    lists:keyreplace(erl_opts, 1, BrtTerms, {erl_opts,
+                    lists:keyreplace(erl_opts, 1, CfgTerms, {erl_opts,
                         lists:delete(no_debug_info, lists:usort(Opts))});
                 _ ->
-                    BrtTerms
+                    CfgTerms
             end;
         _ ->
-            BrtTerms
+            CfgTerms
     end,
     AppDeps = lists:foldl(
         fun(AAppOrDep, AResult) ->
@@ -220,17 +225,12 @@ rebar_config(AppName, ProdDeps, TestDeps, PluginDeps) ->
         end, [], ProdDeps),
     TstDeps = lists:foldl(
         fun(TAppOrDep, TResult) ->
-            % nest the tests because dialyzer can't grok them orelse'd together
-            case brt:dep_list_member(TAppOrDep, TResult) of
-                false ->
-                    case brt:dep_list_member(TAppOrDep, AppDeps) of
-                        false ->
-                            [brt_config:pkg_dep(TAppOrDep) | TResult];
-                        _ ->
-                            TResult
-                    end;
+            case brt:dep_list_member(TAppOrDep, TResult)
+                    orelse brt:dep_list_member(TAppOrDep, AppDeps) of
+                true ->
+                    TResult;
                 _ ->
-                    TResult
+                    [brt_config:pkg_dep(TAppOrDep) | TResult]
             end
         end, [], TestDeps),
     Plugins = brt_config:dep_plugins(TstDeps ++ AppDeps, PluginDeps),
@@ -350,3 +350,33 @@ update_profiles(
 update_profiles([], _, _, _, _, Result) ->
     lists:keysort(1, Result).
 
+%% ===================================================================
+%% Tests
+%% ===================================================================
+
+-ifdef(TEST).
+
+default_data_test() ->
+
+    % this file should always be found ...
+    ?assertMatch(Data when erlang:is_binary(Data),
+        file_data(?DEFAULT_REBAR_CONFIG)),
+
+    % ... and this one shouldn't
+    % error should be a descriptive string
+    ?assertError([_|_], file_data(?DEFAULT_REBAR_CONFIG ++ ".nonesuch")),
+
+    ok.
+
+default_terms_test() ->
+
+    % this file should always be found ...
+    ?assertMatch([_|_], file_terms(?DEFAULT_REBAR_CONFIG)),
+
+    % ... and this one shouldn't
+    % error should be a descriptive string
+    ?assertError([_|_], file_terms(?DEFAULT_REBAR_CONFIG ++ ".nonesuch")),
+
+    ok.
+
+-endif.

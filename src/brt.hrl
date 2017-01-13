@@ -1,6 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2016 Basho Technologies, Inc.
+%% Copyright (c) 2016-2017 Basho Technologies, Inc.
 %%
 %% This file is provided to you under the Apache License,
 %% Version 2.0 (the "License"); you may not use this file
@@ -105,38 +105,16 @@
         "effective only after the plugin is loaded."}
 ).
 
--ifdef(BRT_ESCRIPT).
--define(LOG_DEBUG(Fmt, Arg),
-    io:format(standard_error, "Debug: " ++ Fmt ++ "\n", Arg)).
--define(LOG_INFO(Fmt, Arg),
-    io:format(Fmt ++ "\n", Arg)).
--define(LOG_WARN(Fmt, Arg),
-    io:format(standard_error, "Warning: " ++ Fmt ++ "\n", Arg)).
--define(LOG_ERROR(Fmt, Arg),
-    io:format(standard_error, "Error: " ++ Fmt ++ "\n", Arg)).
--else.
 -define(LOG_DEBUG(Fmt, Arg),  rebar_api:debug(Fmt, Arg)).
 -define(LOG_INFO(Fmt, Arg),   rebar_api:info(Fmt, Arg)).
 -define(LOG_WARN(Fmt, Arg),   rebar_api:warn(Fmt, Arg)).
 -define(LOG_ERROR(Fmt, Arg),  rebar_api:error(Fmt, Arg)).
--endif.
 
 %
 % For temporary tracing ONLY!
 %
 -define(BRT_VAR(Var),   io:format(
     standard_error, "~s:~b: ~s = ~p\n", [?MODULE, ?LINE, ??Var, Var])).
-
-%
-% When built as an EScript, what strategy is used for finding files ...
-% When the ?BRT_ESCRIPT_IO_MOD_KEY is set in the process environment, I/O on
-% files in the application is redirected to operations in the module it points
-% to. When it's unset, operations are performed on the filesystem in which the
-% plugin was built.
-%
--ifdef(BRT_ESCRIPT).
--define(BRT_ESCRIPT_IO_MOD_KEY, brt_escript_app_io_mod).
--endif.
 
 % Syntactic sugar.
 -define(else,   true).

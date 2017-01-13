@@ -1,7 +1,7 @@
 %% -*- mode: erlang; erlang-indent-level: 4; indent-tabs-mode: nil -*-
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2016 Basho Technologies, Inc.
+%% Copyright (c) 2016-2017 Basho Technologies, Inc.
 %%
 %% This file is provided to you under the Apache License,
 %% Version 2.0 (the "License"); you may not use this file
@@ -21,16 +21,13 @@
 
 {application, basho_rebar_tools,
 [
-    {description,   "Basho development support tools"},
+    {description,   "Basho Rebar3 development support tools."},
     {vsn,           "0.3.0"},
     {modules,       []},
     {registered,    []},
-    {applications,  [
-        compiler,
-        inets,
-        kernel,
-        ssl,
-        stdlib,
-        tools
-    ]}
+    {applications,  [compiler, inets, kernel, ssl, stdlib, tools]},
+    % Packaging attributes
+    {maintainers,   ["Basho Technologies, Inc."]},
+    {licenses,      ["Apache 2.0"]},
+    {links,         ["GitHub", "https://github.com/basho/basho_rebar_tools"]}
 ]}.

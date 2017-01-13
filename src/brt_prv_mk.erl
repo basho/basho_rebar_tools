@@ -1,6 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2016 Basho Technologies, Inc.
+%% Copyright (c) 2016-2017 Basho Technologies, Inc.
 %%
 %% This file is provided to you under the Apache License,
 %% Version 2.0 (the "License"); you may not use this file
@@ -165,8 +165,11 @@ update({Name, Path, _} = App, {XRef, Loose, FileNames} = Context, _State) ->
     ?LOG_DEBUG("~s:update/3: App = ~p", [?MODULE, App]),
     case brt_xref:app_deps(XRef, Name) of
         {ok, Deps} ->
-            Content = brt_defaults:makefile(
-                Deps, brt_fudge:test_deps(Path) -- Deps),
+            Forced  = brt:get_key_list(forced, brt_config:config()),
+            AllDeps = lists:usort(lists:append(Forced, Deps)),
+            PrdDeps = lists:delete(Name, AllDeps),
+            TstDeps = lists:subtract(brt_fudge:test_deps(App), AllDeps),
+            Content = brt_defaults:makefile(PrdDeps, TstDeps),
             FileOut = filename:absname(erlang:hd(FileNames), Path),
             FileIn  = case brt:find_first(file, FileNames, [Path]) of
                 false ->
@@ -188,15 +191,9 @@ update({Name, Path, _} = App, {XRef, Loose, FileNames} = Context, _State) ->
                 CpyInfo ->
                     case file:open(FileOut, [write]) of
                         {ok, IoDev} ->
-                            Result = brt_io:write_makefile(
-                                IoDev, Content, CpyInfo),
+                            ok = brt_io:write_makefile(IoDev, Content, CpyInfo),
                             _ = file:close(IoDev),
-                            case Result of
-                                ok ->
-                                    {ok, Context};
-                                _ ->
-                                    Result
-                            end;
+                            {ok, Context};
                         {error, What} ->
                             brt:file_error(FileOut, What)
                     end

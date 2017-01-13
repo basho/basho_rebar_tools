@@ -1,8 +1,0 @@
-
-# NIF artifacts
-*.a
-*.o
-*.obj
-*.so
-*_x86_64
-/_work/

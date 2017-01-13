@@ -1,6 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2016 Basho Technologies, Inc.
+%% Copyright (c) 2016-2017 Basho Technologies, Inc.
 %%
 %% This file is provided to you under the Apache License,
 %% Version 2.0 (the "License"); you may not use this file
@@ -36,11 +36,10 @@
 -define(PROVIDER_DEPS,  [lock]).
 -define(PROVIDER_OPTS,  []).
 
-% Dialyzer doesn't want us peeking inside opaque types, but we want to give
+% Dialyzer doesn't like us peeking inside opaque types, but we want to give
 % dicts special handling.
-% In older Erlangs the compiler will complain if it encounters attribute
-% declarations once functions have been defined, so this needs to stay up here
-% for now.
+% In older Erlangs the compiler will complain if it encounters attributes
+% once functions have been defined, so this needs to live up here.
 -dialyzer({no_opaque, dump/3}).
 
 %% ===================================================================
@@ -186,4 +185,3 @@ list_pos(Elem, [_ | Elems], Pos) ->
     list_pos(Elem, Elems, (Pos + 1));
 list_pos(_, [], _) ->
     0.
-

@@ -162,9 +162,31 @@ long_desc() ->
 }).
 -type context() ::  #ctx{}.
 
+-spec all_deps(CalcDeps :: [brt:app_name()]) -> [brt:app_name()].
+
+all_deps(CalcDeps) ->
+    Forced  = brt:get_key_list(forced, brt_config:config()),
+    lists:usort(lists:append(Forced, CalcDeps)).
+
+-spec create_rebar_config(
+    File        :: brt:fs_path(),
+    App         :: brt:app_spec(),
+    XrefDeps    :: [brt:app_name()],
+    CpyInfo     :: current | brt:basho_year() | iolist(),
+    WarnBlocked :: boolean())
+        -> ok | brt:prv_error().
+
+create_rebar_config(File, {Name, _, _} = App, XrefDeps, CpyInfo, WarnBlocked) ->
+    AllDeps = all_deps(XrefDeps),
+    PrdDeps = lists:delete(Name, AllDeps),
+    TstDeps = lists:subtract(brt_fudge:test_deps(App), AllDeps),
+    Config  = brt_defaults:rebar_config(Name, PrdDeps, TstDeps, []),
+    write_rebar_config(File, Config, CpyInfo, WarnBlocked).
+
 -spec handle_command(
         Opts :: [proplists:property()], State :: brt:rebar_state())
         -> {ok, brt:rebar_state()} | brt:prv_error().
+
 handle_command(Opts, State) ->
     ?LOG_INFO("Calculating dependencies...", []),
     case brt_xref:new(State) of
@@ -238,10 +260,7 @@ update_rebar_config(false, _, {_, Path, _}, _, #ctx{deps = true}) ->
 update_rebar_config(
         false, File, {Name, _, _} = App, XrefDeps, #ctx{skip = Skip}) ->
     ?LOG_INFO("Writing ~s:~s", [Name, filename:basename(File)]),
-    ProdDeps = XrefDeps -- [Name],
-    TestDeps = brt_fudge:test_deps(App) -- XrefDeps,
-    Config = brt_defaults:rebar_config(Name, ProdDeps, TestDeps, []),
-    write_rebar_config(File, Config, current, Skip);
+    create_rebar_config(File, App, XrefDeps, current, Skip);
 
 update_rebar_config(
         FileIn, FileOut, {Name, _, _} = App, XrefDeps,
@@ -262,7 +281,7 @@ update_rebar_config(
                     case file:consult(FileIn) of
                         {ok, Terms} ->
                             Deps = [brt_config:pkg_dep(A)
-                                || A <- (XrefDeps -- [Name])],
+                                || A <- lists:delete(Name, all_deps(XrefDeps))],
                             Conf = lists:keystore(
                                 deps, 1, Terms, {deps, Deps}),
                             write_rebar_config(FileOut, Conf, CpyInfo, Skip);
@@ -270,11 +289,7 @@ update_rebar_config(
                             brt:file_error(FileIn, What)
                     end;
                 _ ->
-                    ProdDeps = XrefDeps -- [Name],
-                    TestDeps = brt_fudge:test_deps(App) -- XrefDeps,
-                    Config = brt_defaults:rebar_config(
-                        Name, ProdDeps, TestDeps, []),
-                    write_rebar_config(FileOut, Config, CpyInfo, Skip)
+                    create_rebar_config(FileOut, App, XrefDeps, CpyInfo, Skip)
             end
     end.
 

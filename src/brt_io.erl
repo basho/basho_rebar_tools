@@ -1,6 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2016 Basho Technologies, Inc.
+%% Copyright (c) 2016-2017 Basho Technologies, Inc.
 %%
 %% This file is provided to you under the Apache License,
 %% Version 2.0 (the "License"); you may not use this file
@@ -58,8 +58,6 @@
 %   Manipulating indents outside of the explicit indent functions is
 %   deliberately not supported.
 %
-%   Atoms are always printed with surrounding single quotes, because it's
-%   too much trouble to figure out whether they need them or not.
 
 % Maximum number of lines to process looking for a complete copyright header.
 % Basho's official header is ~20 lines if it includes leading editor
@@ -179,7 +177,7 @@ copyright_info(File, Type) ->
             try
                 parse_copyright(IoDev, ReInfo)
             after
-                file:close(IoDev)
+                _ = file:close(IoDev)
             end;
         Error ->
             Error
@@ -427,9 +425,9 @@ order_rebar_config_terms(Terms) ->
     % Anything not specified is sorted in the 'everything else' space.
     %
     Order = [
+        {head,  brt_protect},
         {head,  minimum_otp_vsn},
         {head,  erl_first_files},
-        {head,  plugins},
         % everything else, sorted
         {tail,  dialyzer},
         {tail,  xref},
@@ -438,7 +436,10 @@ order_rebar_config_terms(Terms) ->
         {tail,  post_hooks},
         {tail,  provider_hooks},
         {tail,  deps},
-        {tail,  profiles}
+        {tail,  profiles},
+        {tail,  brt},
+        {tail,  brt_upstream},
+        {tail,  plugins}
     ],
     order_rebar_config_terms(lists:reverse(Order), [], Terms, []).
 
@@ -478,10 +479,10 @@ comment_line_start_re(Arg) ->
 
 -spec parse_copyright(
         IoDev :: io:device(), ReInfo :: {comment_type(), string()})
-        ->  none | other | {basho, brt:year1970()} | brt:err_result().
+        ->  copyright_info() | brt:err_result().
 %
-% Results as specified for copyright_info/2.This function is tightly integrated
-% with parse_copyright_line/3.
+% Results as specified for copyright_info/2.
+% This function is tightly integrated with parse_copyright_line/3.
 %
 parse_copyright(IoDev, ReInfo) ->
     State = #cpystate{iodev = IoDev},

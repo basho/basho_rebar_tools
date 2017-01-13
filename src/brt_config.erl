@@ -1,6 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2016 Basho Technologies, Inc.
+%% Copyright (c) 2016-2017 Basho Technologies, Inc.
 %%
 %% This file is provided to you under the Apache License,
 %% Version 2.0 (the "License"); you may not use this file
@@ -43,6 +43,9 @@
 ]).
 
 -include("brt.hrl").
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -record(saved, {
     file    :: brt:fs_path(),
@@ -51,6 +54,9 @@
 
 -type state()   ::  #saved{}.
 -type config()  ::  [{atom(), term()}].
+
+-define(DEFAULT_CONFIG_FILE,    "brt.config").
+-define(OS_ENV_CONFIG_FILE,     "BRT_CONFIG").
 
 -define(CONFIG_TERMS_KEY,       {?MODULE, terms}).
 -define(CONFIG_TERMS(),         erlang:get(?CONFIG_TERMS_KEY)).
@@ -157,8 +163,8 @@ init() ->
 %% @doc Initializes the runtime configuration.
 %%
 init(Dirs) ->
-    DefaultFile = "brt.config",
-    FileNames = case os:getenv("BRT_CONFIG") of
+    DefaultFile = ?DEFAULT_CONFIG_FILE,
+    FileNames = case os:getenv(?OS_ENV_CONFIG_FILE) of
         false ->
             [DefaultFile];
         Val ->
@@ -205,12 +211,14 @@ merge(Dir) ->
 %% @doc Reports whether automated overwrite of the specified file is blocked.
 %%
 overwrite_blocked(File) ->
-    % At present, only the `protect' flag is recognized within a file of
-    % Erlang terms. If it's anything else, or doesn't exist, it's allowed.
+    % At present, the `brt.protect' flag is recognized, but that's deprecated.
+    % `brt_protect == true` is the preferred pattern, allowing it to be a
+    % simple attribute at the top of the file, while the meatier BRT stuff is
+    % stashed at the end.
     case file:consult(File) of
         {ok, Terms} ->
-            BRT = brt:get_key_list(brt, Terms),
-            proplists:get_value(protect, BRT, false);
+            proplists:get_value(brt_protect, Terms, false) orelse
+            proplists:get_value(protect, brt:get_key_list(brt, Terms), false);
         _ ->
             false
     end.
@@ -521,3 +529,25 @@ merge_list([Term | Terms], Result) ->
 merge_list([], Result) ->
     Result.
 
+%% ===================================================================
+%% Tests
+%% ===================================================================
+
+-ifdef(TEST).
+
+default_config_test() ->
+
+    % this file should always be found
+    Terms = brt_defaults:file_terms(?DEFAULT_CONFIG_FILE),
+    ?assertMatch([_|_], Terms),
+
+    % default should always be a branch
+    ?assertMatch({branch, [_|_]},
+        proplists:get_value(default_repo_version, Terms)),
+
+    % default should be empty
+    ?assertEqual([], proplists:get_value(deps, Terms, [])),
+
+    ok.
+
+-endif.

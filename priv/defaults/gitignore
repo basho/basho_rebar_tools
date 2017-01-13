@@ -1,16 +1,14 @@
-# rebar3 and tools
+# rebar
 *.crashdump
 /.cache/
+/.eqc*
+/.eunit/
+/.rebar/
 /.rebar3/
 /_build/
 /_checkouts
+/deps
 /rebar.lock
-
-# build artifacts
-*.app
-*.beam
-/doc/
-/ebin/
 
 # work environments
 *.bak
@@ -28,6 +26,12 @@
 .project
 .settings/
 .tm_properties
-Makefile
 erln8.config
 tmp/
+
+# Erlang build/test artifacts
+*.app
+*.beam
+/doc/
+/ebin/
+log/

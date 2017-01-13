@@ -1,0 +1,8 @@
+{description,
+    "Convenience Makefile. Makefiles should be avoided in Rebar3 projects."}.
+
+{template, "defaults/Makefile", "Makefile"}.
+
+{variables, [{name, [],
+    "Name of the file created by the 'escript' target, default to ignore."}
+]}.
