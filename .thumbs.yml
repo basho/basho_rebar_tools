@@ -3,6 +3,7 @@ merge: true
 merge_method: merge
 build_steps:
   - rebar3 clean --all
+  - rebar3 as validate compile
   - rebar3 compile
   - rebar3 as prod compile
   - rebar3 as check xref

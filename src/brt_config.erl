@@ -25,7 +25,6 @@
     config/0,
     config_file/0,
     dep_erl_opts/2,
-    dep_makefile/2,
     dep_plugins/2,
     init/0,
     init/1,
@@ -109,26 +108,6 @@ config_file() ->
 dep_erl_opts(Deps, Opts) ->
     dep_erl_opts(Deps, Opts,
         brt:get_key_list(dep_erl_opts, ?CONFIG_TERMS())).
-
--spec dep_makefile(Deps :: [brt:dep_spec()], Content :: iolist()) -> iolist().
-%%
-%% @doc Append dependency-specific rules to a makefile's content.
-%%
-%% This is pretty shaky, as the makefile contents are entirely unstructured.
-%%
-%% @end
-%
-% Right now, this is a no-op, and without some more structured approach, it's
-% probably best to keep it that way.
-%
-% dep_makefile([Dep | Deps], Content) ->
-%     dep_makefile(Deps, Content);
-%
-% dep_makefile([], Content) ->
-%     Content.
-%
-dep_makefile(_, Content) ->
-    Content.
 
 -spec dep_plugins(
         Deps    :: [brt:app_name() | brt:dep_spec()],
