@@ -35,7 +35,7 @@ CP	:= /bin/cp -p
 ESCRIPT	?= {{name}}
 
 .PHONY	: check clean clean-deps clean-docs clean-dist compile dialyzer \
-	  default dist docs escript prereqs test validate veryclean xref
+	  default dist docs escriptize prereqs test validate veryclean xref
 
 default : compile
 
@@ -64,7 +64,7 @@ docs :: prereqs
 dialyzer :: prereqs
 	$(REBAR3) as check dialyzer
 
-escript :: prereqs
+escriptize :: prereqs
 	$(REBAR3) as prod escriptize
 
 test :: prereqs
@@ -89,7 +89,7 @@ ifneq ($(strip $(ESCRIPT)),)
 clean-dist ::
 	$(RM) -f $(prj_dir)/$(ESCRIPT)
 
-$(ESCRIPT) :: escript
+$(ESCRIPT) :: escriptize
 	$(CP) $(prj_dir)/_build/prod/bin/$(ESCRIPT) $(prj_dir)/$(ESCRIPT)
 
 endif

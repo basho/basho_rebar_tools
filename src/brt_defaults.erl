@@ -27,11 +27,8 @@
     copyright/2,
     current_year/0,
     editor_erlang/0,
-    editor_makefile/0,
     file_data/1,
     file_terms/1,
-    gitignore/1,
-    makefile/2,
     rebar_config/4
 ]).
 
@@ -129,43 +126,6 @@ file_terms(FileName) ->
 editor_erlang() ->
     comment_line("%%",
         "-*- mode: erlang; erlang-indent-level: 4; indent-tabs-mode: nil -*-").
-
--spec editor_makefile() -> iolist().
-%%
-%% @doc Returns appropriate editor formatting comment line(s) for a Makefile.
-%%
-%% Returned lines, if any, include their trailing newline.
-%%
-editor_makefile() ->
-    [].
-
--spec gitignore(Native :: boolean()) -> iolist().
-%%
-%% @doc Returns a Basho standard .gitignore body.
-%%
-%% If Native is `true' the file includes exclusions for NIF artifacts.
-%%
-%% Note that the result is binary data (bytes), NOT Unicode characters.
-%%
-gitignore(true) ->
-    [file_data("gitignore-native")];
-gitignore(_) ->
-    file_data("gitignore").
-
--spec makefile(
-        ProdDeps    :: [brt:app_name() | brt:dep_spec()],
-        TestDeps    :: [brt:app_name() | brt:dep_spec()])
-        -> iolist().
-%%
-%% @doc Returns a Basho standard Makefile body.
-%%
-%% The returned content is structured to work with the standard rebar.config.
-%%
-%% @see rebar_config/3
-%%
-makefile(ProdDeps, TestDeps) ->
-    brt_config:dep_makefile(ProdDeps ++ TestDeps,
-        unicode:characters_to_list(file_data("Makefile"), utf8)).
 
 -spec rebar_config(
         AppName     :: brt:app_name(),

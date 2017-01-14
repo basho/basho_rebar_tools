@@ -30,7 +30,6 @@
     indent/1,
     write_deps/3,
     write_info/1,
-    write_makefile/3,
     write_rebar_config/3
 ]).
 
@@ -276,22 +275,6 @@ write_info(IoDev) ->
                 lists:sort(Provs) )
     end,
     ok.
-
--spec write_makefile(
-        IoDev   :: io:device(),
-        Content :: iolist(),
-        CpyInfo :: brt:basho_year() | iolist() )
-        -> ok.
-%%
-%% @doc Writes the specified Content as a standard Makefile.
-%%
-write_makefile(IoDev, Content, Header) when erlang:is_list(Header) ->
-    io:put_chars(IoDev, [Header, $\n, Content]);
-
-write_makefile(IoDev, Content, StartYear) ->
-    write_makefile(IoDev, Content, [
-        brt_defaults:editor_makefile(),
-        brt_defaults:copyright("#", StartYear) ]).
 
 -spec write_rebar_config(
         IoDev   :: io:device(),
