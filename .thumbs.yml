@@ -24,4 +24,4 @@ build_steps:
   - rebar3 eunit
   - rebar3 edoc
 org_mode: true
-timeout: 1200
+timeout: 1201
