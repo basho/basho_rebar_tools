@@ -1,6 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2016 Basho Technologies, Inc.
+%% Copyright (c) 2016-2017 Basho Technologies, Inc.
 %%
 %% This file is provided to you under the Apache License,
 %% Version 2.0 (the "License"); you may not use this file
@@ -27,6 +27,7 @@
     commit/1,
     dirty/1,
     pull/1,
+    sync_upstream/6,
     tag/1,
     version/1
 ]).
@@ -158,6 +159,51 @@ pull(Repo) ->
         _ ->
             {error, lists:flatten([Repo, ": Not a Git repository"])}
     end.
+
+-spec sync_upstream(
+    Repo    :: repo(),
+    Type    :: atom(),
+    URL     :: brt:dep_loc(),
+    Push    :: boolean(),
+    UpBr    :: atom() | binary() | string(),
+    SyncBr  :: atom() | binary() | string())
+        -> {ok, [string()]} | brt:err_result().
+%%
+%% @doc Synchronizes branch SyncBr in Repo with branch UpBr at URL.
+%%
+%% On success, the command's output is returned as a list of lines, without
+%% their terminating newlines.
+%%
+sync_upstream(Repo, git, URL, Push, UpBr, SyncBr) ->
+    case filelib:is_dir(filename:join(Repo, ".git")) of
+        true ->
+            FetchCmd = ["fetch", URL,
+                lists:flatten(io_lib:format("+~s:~s", [UpBr, SyncBr]))],
+            case git_cmd(Repo, FetchCmd, []) of
+                {ok, FetchOut} ->
+                    case Push of
+                        true ->
+                            PushCmd = [
+                                "push", "--set-upstream",
+                                "origin", brt:to_string(SyncBr)],
+                            case git_cmd(Repo, PushCmd, []) of
+                                {ok, PushOut} ->
+                                    {ok, lists:reverse(PushOut ++ FetchOut)};
+                                PushErr ->
+                                    PushErr
+                            end;
+                        _ ->
+                            {ok, lists:reverse(FetchOut)}
+                    end;
+                FetchErr ->
+                    FetchErr
+            end;
+        _ ->
+            {error, lists:flatten([Repo, ": Not a Git repository"])}
+    end;
+sync_upstream(_Repo, Type, URL, _Push, _UpBr, _SyncBr) ->
+    {error, lists:flatten(io_lib:format(
+         "Repository type '~s' of ~s not supported", [Type, URL])) }.
 
 -spec tag(Repo :: repo()) -> version() | brt:err_result().
 %%
@@ -311,8 +357,9 @@ git_cmd(RunDir, ExeArgs, ExeEnv) ->
         Val ->
             Val
     end,
+    ?LOG_DEBUG("~s ~p", [GitExe, [{cd, RunDir}, {args, ExeArgs}, {env, ExeEnv}]]),
     Port = erlang:open_port({spawn_executable, GitExe}, [
-        {cd, RunDir}, {args, ExeArgs}, {env,  ExeEnv},
+        {cd, RunDir}, {args, ExeArgs}, {env, ExeEnv},
         {line, 16384}, exit_status, stderr_to_stdout, hide, eof]),
     try handle_port(Port, []) of
         {ok, Output} ->

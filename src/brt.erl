@@ -310,12 +310,16 @@ format_error(Error) when erlang:is_list(Error) ->
     Error;
 format_error(app_undefined) ->
     "No top-level application defined";
+format_error(config_error) ->
+    "Configuration error(s) encounterd";
+format_error(config_warning) ->
+    "Configuration warning(s) encounterd";
 format_error(copyright_dirty) ->
     "Multiple or non-Basho copyrights, adjust manually";
 format_error(deps_mismatch) ->
     "Static and calculated dependencies differ";
 format_error(overwrite_blocked) ->
-    "Overwrite disabled by BRT attribute";
+    "Overwrite disabled by 'brt_protect' attribute";
 format_error(repo_fail) ->
     "Repository operation failed";
 format_error({?MODULE, What}) ->
