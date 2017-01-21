@@ -1,6 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2016 Basho Technologies, Inc.
+%% Copyright (c) 2016-2017 Basho Technologies, Inc.
 %%
 %% This file is provided to you under the Apache License,
 %% Version 2.0 (the "License"); you may not use this file
@@ -55,7 +55,7 @@ init(StateIn) ->
             % get its directory - it will be `undefined'.
             case brt_config:init([rebar_state:dir(State)]) of
                 ok ->
-                    init_providers(Mods, {ok, State});
+                    {ok, lists:foldl(fun init_provider/2, State, Mods)};
                 {error, What} ->
                     erlang:error(What)
             end
@@ -154,23 +154,13 @@ init_prov_env(Mods, State) ->
             {ok, State}
     end.
 
--spec init_providers(
-    Mods :: [module()], Result :: {ok, brt:rebar_state()} | brt:err_result())
-        -> {ok, brt:rebar_state()} | brt:err_result().
+-spec init_provider(Module :: module(), State :: brt:rebar_state()) -> brt:rebar_state().
 %
-% Initialize the command providers.
-% Yes, this could be done with lists:foldl/3, since providers' init/1 function
-% is only (currently) allowed to return success, but doing it explicitly here
-% allows:
-% - Bailing out early if we decide to return errors at some point.
-% - Instrumenting the calls to work out the kinks that are a natural part of
-%   developing rebar providers.
+% Initialize one command provider.
 %
-init_providers([Mod | Mods], {ok, State}) ->
-    % ?BRT_VAR(Mod),
-    init_providers(Mods, Mod:init(State));
-init_providers(_, Result) ->
-    Result.
+init_provider(Module, State) ->
+    Provider = providers:create(Module:spec()),
+    rebar_state:add_provider(State, Provider).
 
 -spec maybe_adjust_log_level(
     Spec :: brt:prv_spec(), Args :: [string()], Caller :: atom()) -> ok.

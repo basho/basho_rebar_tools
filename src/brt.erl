@@ -133,7 +133,6 @@
 
 -callback do(rebar_state()) -> {ok, rebar_state()} | prv_error().
 -callback format_error(term()) -> iolist().
--callback init(rebar_state()) -> {ok, rebar_state()}.
 -callback spec() -> prv_spec().
 
 -spec implements_behaviour(Module :: module()) -> boolean().
@@ -147,7 +146,7 @@ implements_behaviour(Module) ->
                 fun({Function, Arity}) ->
                     erlang:function_exported(Module, Function, Arity)
                 end,
-                [{do, 1}, {format_error, 1}, {init, 1}, {spec, 0}]);
+                [{do, 1}, {format_error, 1}, {spec, 0}]);
         _ ->
             false
     end.
