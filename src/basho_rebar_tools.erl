@@ -55,7 +55,8 @@ init(StateIn) ->
             % get its directory - it will be `undefined'.
             case brt_config:init([rebar_state:dir(State)]) of
                 ok ->
-                    {ok, lists:foldl(fun init_provider/2, State, Mods)};
+                    {ok, lists:foldl(fun init_provider/2,
+                        brt_inject_state:inject(State), Mods)};
                 {error, What} ->
                     erlang:error(What)
             end
