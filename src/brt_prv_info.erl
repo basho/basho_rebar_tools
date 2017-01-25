@@ -1,6 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2016 Basho Technologies, Inc.
+%% Copyright (c) 2016-2017 Basho Technologies, Inc.
 %%
 %% This file is provided to you under the Apache License,
 %% Version 2.0 (the "License"); you may not use this file
@@ -27,7 +27,7 @@
 -ifndef(BRT_VALIDATE).
 -behaviour(brt).
 -endif.
--export([do/1, format_error/1, init/1, spec/0]).
+-export([do/1, format_error/1, spec/0]).
 
 -include("brt.hrl").
 
@@ -39,14 +39,6 @@
 %% ===================================================================
 %% Behavior
 %% ===================================================================
-
--spec init(State :: brt:rebar_state()) -> {ok, brt:rebar_state()}.
-%%
-%% @doc Adds the command provider to rebar's state.
-%%
-init(State) ->
-    Provider = providers:create(spec()),
-    {ok, rebar_state:add_provider(State, Provider)}.
 
 -spec do(State :: brt:rebar_state()) -> {ok, brt:rebar_state()}.
 %%

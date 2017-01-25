@@ -1,14 +1,21 @@
+#
+# Notes:
+#   This repo builds a Rebar3 plugin, and running dialyzer on it from within
+#   Rebar3 is dicey, so it's not included as an automated build step here.
+#   Differences between the version of Rebar3 running the tests and the head
+#   of the master branch, which is downloaded as a dependency, can cause
+#   Rebar3 to crash in mysterious ways.
+#   Dialyzer should only be run on this repo in a controlled environment where
+#   issues can be addressed as they arise.
+#
 minimum_reviewers: 1
 merge: true
 merge_method: merge
-# for OTP < 18 need the check_old profile added
-# it would be preferable to do this dynamically
 build_steps:
   # clean relevant profiles to ensure they succeed
   - rebar3 clean --all
   - rebar3 as prod clean --all
   - rebar3 as check clean --all
-  - rebar3 as check,check_old clean --all
   - rebar3 as test clean --all
   - rebar3 as validate clean --all
   # compile relevant profiles to ensure they succeed
@@ -16,11 +23,9 @@ build_steps:
   - rebar3 compile
   - rebar3 as prod compile
   - rebar3 as check compile
-  - rebar3 as check,check_old compile
   - rebar3 as test compile
   # these are the real tests
   - rebar3 as check xref
-  - rebar3 as check,check_old dialyzer
   - rebar3 eunit
   - rebar3 edoc
 org_mode: true
