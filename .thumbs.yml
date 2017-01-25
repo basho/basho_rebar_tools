@@ -16,14 +16,12 @@ build_steps:
   - rebar3 clean --all
   - rebar3 as prod clean --all
   - rebar3 as check clean --all
-  - rebar3 as check clean --all
   - rebar3 as test clean --all
   - rebar3 as validate clean --all
   # compile relevant profiles to ensure they succeed
   - rebar3 as validate compile
   - rebar3 compile
   - rebar3 as prod compile
-  - rebar3 as check compile
   - rebar3 as check compile
   - rebar3 as test compile
   # these are the real tests
