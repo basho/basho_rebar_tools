@@ -1,7 +1,5 @@
 # rebar
-*.crashdump
 /.cache/
-/.eqc*
 /.eunit/
 /.rebar/
 /.rebar3/
@@ -18,7 +16,6 @@
 *.sublime-project
 *.sublime-workspace
 *.tmp
-*.txt
 *_plt
 *~
 .DS_Store
@@ -26,15 +23,22 @@
 .project
 .settings/
 .tm_properties
+/*.txt
 erln8.config
 tmp/
 
 # Erlang build/test artifacts
 *.app
 *.beam
-/doc/
+*.coverdata
+*.crashdump
+/.eqc*
+/doc/*.css
+/doc/*.html
+/doc/*.png
+/doc/edoc-info
 /ebin/
-log/
+/log/
 
 # EScript
 /{{name}}

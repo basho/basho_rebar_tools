@@ -1,2 +1,3 @@
 {description,   "Default .gitignore file for Erlang with NIF(s)."}.
-{file,          "defaults/gitignore-native", ".gitignore"}.
+{template,      "defaults/gitignore-native", ".gitignore"}.
+{variables,     [{name, "nif-file-name", "Base name of the generated NIF library."}]}.

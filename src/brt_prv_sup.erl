@@ -57,6 +57,15 @@
     "escript templates."
 ).
 
+-define(NO_NIFNAME_WARNING,
+    "The --native option was given, but no main application is defined. The "
+    "option is ignored. Use the rebar3 template directly, optionally with a "
+    "'name' argument, to force use of NIF templates."
+).
+
+%% Keep the function around for later use.
+-dialyzer({no_match, set_template_var/4}).
+
 %% ===================================================================
 %% Behavior
 %% ===================================================================
@@ -77,7 +86,7 @@ do(State) ->
         _ ->
             Tgts
     end,
-    Vars = prepare_opt_vars([], Opts, State),
+    Vars = native_opt_vars(escript_opt_vars([], Opts, State), Opts, State),
     handle_command(Targets, Vars, Opts, State).
 
 -spec format_error(Error :: term()) -> iolist().
@@ -148,11 +157,11 @@ handle_command([gitignore | Targets], VarsIn, Opts, State) ->
                 true ->
                     TmplBase ++ "-n";
                 _ ->
-                    case proplists:get_value(name, VarsIn) of
-                        undefined ->
-                            TmplBase;
+                    case proplists:get_value(escript, Opts) of
+                        true ->
+                            TmplBase ++ "-es";
                         _ ->
-                            TmplBase ++ "-es"
+                            TmplBase
                     end
             end,
             case rebar_templater:new(Template, Vars, true, State) of
@@ -176,11 +185,11 @@ handle_command([thumbs | Targets], VarsIn, Opts, State) ->
                 _ ->
                     TmplBase
             end,
-            Template = case proplists:get_value(name, VarsIn) of
-                undefined ->
-                    TmplPart;
+            Template = case proplists:get_value(escript, Opts) of
+                true ->
+                    TmplPart ++ "-es";
                 _ ->
-                    TmplPart ++ "-es"
+                    TmplPart
             end,
             case rebar_templater:new(Template, Vars, true, State) of
                 ok ->
@@ -195,7 +204,7 @@ handle_command([thumbs | Targets], VarsIn, Opts, State) ->
 handle_command([makefile | Targets], VarsIn, Opts, State) ->
     FileName = "Makefile",
     Template = "mk",
-        case prepare_file_vars(FileName, VarsIn) of
+    case prepare_file_vars(FileName, VarsIn) of
         Vars when erlang:is_list(Vars) ->
             case rebar_templater:new(Template, Vars, true, State) of
                 ok ->
@@ -243,31 +252,91 @@ prepare_file_vars(File, Vars) ->
             {error, ?MODULE, What}
     end.
 
--spec prepare_opt_vars(
+-spec escript_opt_vars(
     Vars    :: [{atom(), string()}],
     Opts    :: [{atom(), term()}],
     State   :: brt:rebar_state())
         -> [{atom(), string()}] | brt:prv_error().
-%
-% Populates template context from options.
-%
-prepare_opt_vars(VarsIn, Opts, State) ->
+%%
+%% Populates escript template context from options.
+%%
+escript_opt_vars(Vars, Opts, State) ->
     case proplists:get_value(escript, Opts) of
         true ->
             case rebar_state:get(State, escript_main_app, undefined) of
                 undefined ->
-                    case rebar_state:project_apps(State) of
-                        [AppInfo] ->
-                            [{name, lists:flatten(io_lib:format("~s",
-                                [rebar_app_info:name(AppInfo)]))} | VarsIn];
-                        _ ->
-                            ?LOG_WARN(?NO_ESCRIPT_WARNING, []),
-                            VarsIn
-                    end;
+                    set_teplate_prj_app(
+                        name, State, Vars, false, ?NO_ESCRIPT_WARNING);
                 AppName ->
-                    [{name, lists:flatten(
-                        io_lib:format("~s", [AppName]))} | VarsIn]
+                    set_template_var(name, AppName, Vars, true)
             end;
         _ ->
-            VarsIn
+            Vars
+    end.
+
+-spec native_opt_vars(
+    Vars    :: [{atom(), string()}],
+    Opts    :: [{atom(), term()}],
+    State   :: brt:rebar_state())
+        -> [{atom(), string()}] | brt:prv_error().
+%%
+%% Populates NIF/port template context from options.
+%% Lower priority than escript name, so it defers to a previously set value.
+%%
+native_opt_vars(Vars, Opts, State) ->
+    case proplists:get_value(native, Opts) of
+        true ->
+            set_teplate_prj_app(
+                name, State, Vars, false, ?NO_NIFNAME_WARNING);
+        _ ->
+            Vars
+    end.
+
+-spec set_teplate_prj_app(
+    Name    :: atom(),
+    State   :: brt:rebar_state(),
+    Vars    :: [{atom(), string()}],
+    Force   :: boolean(),
+    Warn    :: string())
+        -> [{atom(), string()}].
+
+set_teplate_prj_app(Name, State, Vars, true, Warn) ->
+    case rebar_state:project_apps(State) of
+        [AppInfo | _] ->
+            set_template_var(
+                Name, rebar_app_info:name(AppInfo), Vars, true);
+        _ ->
+            Key = {?MODULE, prj_app_warned},
+            case erlang:get(Key) of
+                true ->
+                    Vars;
+                _ ->
+                    ?LOG_WARN(Warn, []),
+                    _ = erlang:put(Key, true),
+                    Vars
+            end
+    end;
+set_teplate_prj_app(Name, State, Vars, false, Warn) ->
+    case lists:keymember(Name, 1, Vars) of
+        true ->
+            Vars;
+        _ ->
+            set_teplate_prj_app(Name, State, Vars, true, Warn)
+    end.
+
+-spec set_template_var(
+    Name    :: atom(),
+    Value   :: atom() | binary()| [char() | [char()]],
+    Vars    :: [{atom(), string()}],
+    Force   :: boolean())
+        -> [{atom(), string()}].
+
+set_template_var(Name, Value, Vars, true) ->
+    lists:keystore(Name, 1, Vars, {Name, brt:to_string(Value)});
+set_template_var(Name, Value, Vars, false) ->
+    case lists:keymember(Name, 1, Vars) of
+        true ->
+            Vars;
+        _ ->
+            set_template_var(Name, Value, Vars, true)
     end.
