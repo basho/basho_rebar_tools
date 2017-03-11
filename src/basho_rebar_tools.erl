@@ -35,6 +35,28 @@
 % This is the version that contains the profile precedence fix.
 -define(REBAR_MIN_VSN,  [3, 3, 3]).
 
+% Key into rebar_state options dictionary for what's installed in the
+% current state.
+-define(INSTALLED_PROVIDERS_KEY, {?MODULE, installed}).
+
+% Implementation Notes:
+%
+%   There are two sets of modules that interact: the set of all providers, and
+%   those that have been installed in the current rebar state.
+%   In most (possibly all) cases, they'll be one of {[], Modules},
+%   {Modules, []}, or {Modules, Modules}.
+%   The sets get appended to and subtracted from one another, and when both are
+%   non-empty the subtraction can be non-trivial.
+%   While it's tempting to keep them both ordered (which they almost certainly
+%   are by how the modules are initially listed) and just do a direct match
+%   comparison on them, I've elected to use ordered sets as their
+%   representation to CMA if I do something weird in the future that breaks
+%   assumptions. This may mean that some operations aren't as efficient as
+%   they could be, but conversely, no operations should be wildly inefficient.
+%
+-define(PRV_SET_MOD,    ordsets).
+-type prv_mods()    ::  [module()].
+
 %%====================================================================
 %% provider API
 %%====================================================================
@@ -55,8 +77,7 @@ init(StateIn) ->
             % get its directory - it will be `undefined'.
             case brt_config:init([rebar_state:dir(State)]) of
                 ok ->
-                    {ok, lists:foldl(fun init_provider/2,
-                        brt_inject_state:inject(State), Mods)};
+                    {ok, install_providers(Mods, brt_inject_state:inject(State))};
                 {error, What} ->
                     erlang:error(What)
             end
@@ -107,7 +128,7 @@ check_rebar_version() ->
                 [VsnStr, brt:version_string(?REBAR_MIN_VSN)])
     end.
 
--spec command_mod_spec(Cmd :: atom() | string(), Mods :: [module()])
+-spec command_mod_spec(Cmd :: atom() | string(), Mods :: prv_mods())
         -> {atom(), module(), brt:prv_spec()} | false.
 %
 % Find the module and provider spec for the specified command.
@@ -125,7 +146,7 @@ command_mod_spec(Cmd, [Mod | Mods]) ->
 command_mod_spec(_, []) ->
     false.
 
--spec init_prov_env(Mods :: [module()], State :: brt:rebar_state())
+-spec init_prov_env(Mods :: prv_mods(), State :: brt:rebar_state())
         -> {ok, brt:rebar_state()}.
 %
 % If one of our commands has been invoked:
@@ -155,13 +176,39 @@ init_prov_env(Mods, State) ->
             {ok, State}
     end.
 
--spec init_provider(Module :: module(), State :: brt:rebar_state()) -> brt:rebar_state().
+-spec install_providers(Modules :: prv_mods(), State :: brt:rebar_state())
+        -> brt:rebar_state().
+%
+% Initialize uninstalled command providers.
+%
+install_providers(Modules, State) ->
+    Installed = installed_providers(State),
+    ToInstall = ?PRV_SET_MOD:subtract(Modules, Installed),
+    NextState = ?PRV_SET_MOD:fold(fun install_provider/2, State, ToInstall),
+    installed_providers(NextState, ?PRV_SET_MOD:union(Installed, ToInstall)).
+
+-spec install_provider(Module :: module(), State :: brt:rebar_state())
+        -> brt:rebar_state().
 %
 % Initialize one command provider.
 %
-init_provider(Module, State) ->
-    Provider = providers:create(Module:spec()),
-    rebar_state:add_provider(State, Provider).
+install_provider(Module, State) ->
+    rebar_state:add_provider(State, providers:create(Module:spec())).
+
+-spec installed_providers(State :: brt:rebar_state()) -> prv_mods().
+%
+% Returns the list of our providers currently installed in State.
+%
+installed_providers(State) ->
+    rebar_state:get(State, ?INSTALLED_PROVIDERS_KEY, []).
+
+-spec installed_providers(State :: brt:rebar_state(), Modules :: prv_mods())
+        -> brt:rebar_state().
+%
+% Updates the list of our providers currently installed in State.
+%
+installed_providers(State, Modules) ->
+    rebar_state:set(State, ?INSTALLED_PROVIDERS_KEY, Modules).
 
 -spec maybe_adjust_log_level(
     Spec :: brt:prv_spec(), Args :: [string()], Caller :: atom()) -> ok.
@@ -197,12 +244,12 @@ maybe_adjust_log_level(Spec, Args, Caller) ->
             ok
     end.
 
--spec provider_modules(State :: brt:rebar_state()) -> [module()].
+-spec provider_modules(State :: brt:rebar_state()) -> prv_mods().
 %
 % Return the list of modules in this application implementing command
 % providers.
 %
 provider_modules(_State) ->
-    lists:filter(
+    ?PRV_SET_MOD:from_list(lists:filter(
         fun brt:implements_behaviour/1,
-        brt:list_modules(?PRV_MOD_PREFIX)).
+        brt:list_modules(?PRV_MOD_PREFIX))).

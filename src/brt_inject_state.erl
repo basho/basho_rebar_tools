@@ -64,7 +64,7 @@ inject(State) ->
 %
 % Default is to add `{d, <uppercase-App>}' to `erl_opts' in Profile if the App is
 % present. If that element is already present in State, the test is skipped.
-% Default is pass expanded Target to inject_target/2.
+% Default is to pass expanded Target to inject_target/2.
 % Add discriminating function heads to override default behavior.
 %
 inject(Target, State) ->
