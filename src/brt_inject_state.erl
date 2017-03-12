@@ -34,10 +34,12 @@
 
 -include("brt.hrl").
 
+-type define()  :: atom() | {atom(), term()}.
+
 -record(tgt, {
     profile             :: atom(),
     app                 :: atom(),
-    define  = default   :: atom() | default,
+    define  = default   :: define() | [define()],
     header  = undefined :: string() | default | undefined
 }).
 
@@ -68,20 +70,13 @@ inject(State) ->
 % Add discriminating function heads to override default behavior.
 %
 inject(Target, State) ->
-    ?LOG_DEBUG("~s:inject(~p, _State).", [?MODULE, Target]),
+    % ?LOG_DEBUG("~s:inject(~p, State).", [?MODULE, Target]),
     Tgt = expand_defaults(Target),
-    Defd = lists:any(
-        fun({d, Def}) ->
-                Def =:= Tgt#tgt.define;
-            ({d, Def, _}) ->
-                Def =:= Tgt#tgt.define;
-            (_) ->
-                false
-        end, brt:get_key_list(erl_opts, get_profile(Tgt#tgt.profile, State))),
-    if
-        Defd ->
+    Opts = brt:get_key_list(erl_opts, get_profile(Tgt#tgt.profile, State)),
+    case lists:all(fun(Def) -> lists:member(Def, Opts) end, Tgt#tgt.define) of
+        true ->
             State;
-        ?else ->
+        _ ->
             inject_target(Tgt, State)
     end.
 
@@ -89,10 +84,12 @@ inject(Target, State) ->
 %
 % Default is to look for a header file with the app's name as part of the test.
 % When the test is positive, `{d, <uppercase-Target>}' is added to `erl_opts' in Profile.
-% Add discriminating function heads to override default behavior.
+%
+% Discriminating function heads can be added here or in set_target_opts/2 to
+% override default behavior.
 %
 inject_target(#tgt{header = undefined} = Tgt, State) ->
-    ?LOG_DEBUG("~s:inject_target(~p, _State).", [?MODULE, Tgt]),
+    ?LOG_DEBUG("Checking application '~s'", [Tgt#tgt.app]),
     case code:lib_dir(Tgt#tgt.app) of
         {error, bad_name} ->
             State;
@@ -101,13 +98,13 @@ inject_target(#tgt{header = undefined} = Tgt, State) ->
     end;
 
 inject_target(Tgt, State) ->
-    ?LOG_DEBUG("~s:inject_target(~p, _State).", [?MODULE, Tgt]),
+    ?LOG_DEBUG("Checking application '~s'", [Tgt#tgt.app]),
     case code:lib_dir(Tgt#tgt.app, include) of
         {error, bad_name} ->
             State;
         Dir ->
             Incl = filename:join(Dir, Tgt#tgt.header),
-            ?LOG_DEBUG("Checking ~s", [Incl]),
+            ?LOG_DEBUG("Checking file '~s'", [Incl]),
             case filelib:is_regular(Incl) of
                 true ->
                     set_target_opts(Tgt, State);
@@ -121,20 +118,34 @@ inject_target(Tgt, State) ->
 % Fill in the blanks ...
 %
 expand_defaults(#tgt{app = App, define = default} = Tgt) ->
-    expand_defaults(Tgt#tgt{define = brt:to_atom(string:to_upper(brt:to_string(App)))});
+    expand_defaults(Tgt#tgt{define = [brt:to_atom(string:to_upper(brt:to_string(App)))]});
+
+expand_defaults(#tgt{define = Def} = Tgt) when not erlang:is_list(Def) ->
+    expand_defaults(Tgt#tgt{define = [Def]});
+
 expand_defaults(#tgt{app = App, header = default} = Tgt) ->
     expand_defaults(Tgt#tgt{header = lists:flatten(io_lib:format("~s.hrl", [App]))});
+
 % would be nice to make this conditional, if only we had a preprocessor ...
 expand_defaults(Tgt) when not (
         erlang:is_record(Tgt, tgt)
         andalso erlang:is_atom(Tgt#tgt.profile)
         andalso erlang:is_atom(Tgt#tgt.app)
-        andalso erlang:is_atom(Tgt#tgt.define)
+        andalso erlang:is_list(Tgt#tgt.define)
         andalso (Tgt#tgt.header =:= undefined
                 orelse erlang:is_list(Tgt#tgt.header)) ) ->
     erlang:error(badarg, [Tgt]);
-expand_defaults(Tgt) ->
-    Tgt.
+
+expand_defaults(#tgt{define = Macros} = Tgt) ->
+    Defs = lists:map(
+        fun({Def, Val}) when erlang:is_atom(Def) ->
+                {d, Def, Val};
+            (Def) when erlang:is_atom(Def) ->
+                {d, Def};
+            (Bad) ->
+                erlang:error(badarg, [Bad, Tgt])
+        end, Macros),
+    Tgt#tgt{define = Defs}.
 
 -spec get_profile(Name :: atom(), State :: brt:rebar_state()) -> list().
 %
@@ -167,10 +178,65 @@ set_profile(Name, Value, State) ->
 -spec set_target_opts(Tgt :: #tgt{}, State :: brt:rebar_state()) -> brt:rebar_state().
 %
 % Add the appropriate options to the target profile.
+% At this point whatever predicates apply have passed.
+% Discriminating function heads are added to override default behavior.
 %
+set_target_opts(#tgt{app = eqc = Mod, define = Defs} = Tgt, State) ->
+    % Use an indirect module so xref and dialyzer don't complain.
+    % Conveniently, it's the App name.
+    [Maj, Min | _] = Vsn = case Mod:version() of
+        % As of this writing EQC returns the version as a float.
+        % I'm reasonably sure I've seen it documented somewhere, but not
+        % finding it so I'm winging it here ...
+        FVsn when erlang:is_float(FVsn) ->
+            V1 = erlang:trunc(FVsn),
+            R1 = (FVsn - V1),
+            V2 = erlang:trunc(R1 * 100),
+            R2 = ((R1 * 100) - V2),
+            V3 = erlang:trunc(R2 * 10),
+            [V1, V2, V3];
+        SVsn ->
+            brt:parse_version(SVsn)
+    end,
+    NewDefs = if
+        % Assume breaking API changes if we ever see a major version > 1.
+        Maj > 1 ->
+            ?LOG_WARN("EQC version ~p may not be handled properly!", [Vsn]),
+            Def = brt:to_atom(io_lib:format("EQC_API_~b", [Maj])),
+            [{d, Def} | Defs];
+
+        % Lots of API changes at version 1.35.x.
+        Maj =:= 1 andalso Min >= 35 ->
+            [{d, 'EQC_API_1_35'} | Defs];
+
+        ?else ->
+            Defs
+    end,
+    NextDefs = [{d, 'EQC_VERSION', Vsn} | NewDefs],
+    set_target_opts_final(Tgt#tgt{define = NextDefs}, State);
+
 set_target_opts(Tgt, State) ->
-    Orig = get_profile(Tgt#tgt.profile, State),
-    % we wouldn't be here if it was already defined
-    Opts = [{d, Tgt#tgt.define} | brt:get_key_list(erl_opts, Orig)],
-    Prof = lists:keystore(erl_opts, 1, Orig, {erl_opts, Opts}),
-    set_profile(Tgt#tgt.profile, Prof, State).
+    set_target_opts_final(Tgt, State).
+
+-spec set_target_opts_final(Tgt :: #tgt{}, State :: brt:rebar_state())
+        -> brt:rebar_state().
+%
+% Add the specified options to the target profile.
+%
+set_target_opts_final(#tgt{profile = Profile, define = Defs}, State) ->
+    ?LOG_DEBUG("Inject into profile '~s': ~p", [Profile, Defs]),
+    Orig = get_profile(Profile, State),
+    Opts = lists:foldl(
+        fun(Def, OptsIn) ->
+            case lists:member(Def, OptsIn) of
+                true ->
+                    OptsIn;
+                _ ->
+                    % Add at the end - if there's a macro value conflict, we
+                    % want the one we're adding to trigger the redefinition
+                    % error, not the one that was already there.
+                    lists:append(OptsIn, [Def])
+            end
+        end, brt:get_key_list(erl_opts, Orig), Defs),
+    NewProf = lists:keystore(erl_opts, 1, Orig, {erl_opts, Opts}),
+    set_profile(Profile, NewProf, State).

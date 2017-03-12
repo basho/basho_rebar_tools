@@ -32,6 +32,8 @@ A few of the highlights are:
   * `.thumbs.yml` and `.gitignore` files are created from templates aligned with project configurations.
   * _Coordinated Makefiles can also be generated, but their use is discouraged._
 
+* Sets <a href="#erlang-quickcheck">QuickCheck compilation macros</a> as appropriate.
+
 There are robust `git` and `GitHub API` manipulation capabilities under the hood that can, and will, be leveraged as appropriate use cases arise.
 
 > Just because we _can_ automate a bunch of repository manipulation operations, that doesn't make it a good idea.
@@ -66,7 +68,7 @@ Rebar3 and this plugin support all versions of Erlang/OTP from R16 on.
 
 A growing list of Basho repositories build with Rebar3 using BRT.
 
-Look for branch `feature/riak-2903/rebar3`.
+Look for branch `rebar3`.
 
 ### Commands
 
@@ -83,6 +85,23 @@ By default, the plugin looks for its configuration in a file named `brt.config` 
 The command `rebar3 brt-info` displays the effective configuration.
 
 Refer to the extensive documentation in the default [brt.config](priv/defaults/brt.config) to see what you can adjust.
+
+### Erlang QuickCheck
+
+Basho uses [Quviq QuickCheck][eqc] extensively in `eunit` and `Common Test` tests.
+In support of our tests, BRT defines the following macros when compiling Erlang source files in the `test` profile used by the `eunit`, `ct`, and `cover` targets:
+
+* `EQC`
+  * Defined if the `eqc` application is installed on the code path when `rebar3` is started.
+* `EQC_VERSION`
+  * If the `eqc` application is installed, this macro is defined to a list of non-negative integers indicating its version.  As of this writing, the list has 3 elements: Major, Minor, and Patch.  In all cases this value should be equivalent to that returned by `eqc:version/0`, but may be easier to work with.
+* `EQC_API_1_35`
+  * Defined if `EQC_VERSION >= [1, 35, 0]`.  This version introduced significant API changes, and certain code written for the API before this version won't work after it, and vice versa.  Among the affected modules are `eqc_component`, `eqc_fsm`, and `eqc_statem`.
+  * If and when similar breaking changes are introduced, additional macro definitions will be added.
+
+_**Note:** If you have EQC tests in your project, you'll need to add the `nowarn_unused_imports` option to `erl_opts` in the `test` profile.  BRT does **NOT** add this option for you, as the presence of EQC doesn't mean it's actually being used._
+
+> We do not support open-source QuickCheck clones.
 
 ## Contributing
 
@@ -101,4 +120,5 @@ Everything here is covered by this [license][].
   [rebar3dl]:   https://s3.amazonaws.com/rebar3/rebar3
   [rebar3cfg]:  https://www.rebar3.org/docs/configuration
   [rebar3src]:  https://github.com/erlang/rebar3
+  [eqc]:        http://www.quviq.com/products/erlang-quickcheck/
 
